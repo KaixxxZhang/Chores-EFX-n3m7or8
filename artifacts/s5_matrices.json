@@ -1,0 +1,100 @@
+{
+  "return_type": "ii+iii",
+  "mode": "chores",
+  "indexing": "zero-based",
+  "instances": [
+    {
+      "id": "s5-only-322",
+      "purpose": "Open-class witness whose every EFX allocation has occupancy (3,2,2)",
+      "n": 3,
+      "m": 7,
+      "costs": [
+        [5, 6, 10, 1, 2, 6, 6],
+        [1, 5, 6, 2, 3, 4, 4],
+        [4, 5, 6, 4, 4, 1, 3]
+      ],
+      "argmins": [[3], [0], [5]],
+      "row_nunique": [5, 6, 5],
+      "reversal_witnesses": {
+        "0-1": [0, 3],
+        "0-2": [0, 5],
+        "1-2": [0, 5]
+      },
+      "allocations_checked": 2187,
+      "efx_count": 64,
+      "efx_occupancy": {
+        "3+2+2": 64
+      }
+    },
+    {
+      "id": "s5-only-331",
+      "purpose": "Open-class witness whose every EFX allocation has occupancy (3,3,1)",
+      "n": 3,
+      "m": 7,
+      "costs": [
+        [42, 943, 37, 16, 34, 1041, 987],
+        [3118, 24680, 6203, 6302, 6137, 21793, 34067],
+        [6116, 21754, 3058, 6174, 3232, 18609, 30957]
+      ],
+      "argmins": [[3], [0], [2]],
+      "row_nunique": [7, 7, 7],
+      "reversal_witnesses": {
+        "0-1": [0, 2],
+        "0-2": [0, 3],
+        "1-2": [0, 2]
+      },
+      "allocations_checked": 2187,
+      "efx_count": 21,
+      "efx_occupancy": {
+        "3+3+1": 21
+      }
+    },
+    {
+      "id": "s5-only-421",
+      "purpose": "Open-class witness whose every EFX allocation has occupancy (4,2,1)",
+      "n": 3,
+      "m": 7,
+      "costs": [
+        [8, 330, 6, 0, 159, 191, 346],
+        [621, 1071, 507, 4582, 38, 1502, 1559],
+        [0, 525, 0, 8, 24, 513, 1010]
+      ],
+      "argmins": [[3], [4], [0, 2]],
+      "row_nunique": [7, 7, 6],
+      "reversal_witnesses": {
+        "0-1": [0, 3],
+        "0-2": [0, 3],
+        "1-2": [0, 4]
+      },
+      "allocations_checked": 2187,
+      "efx_count": 8,
+      "efx_occupancy": {
+        "4+2+1": 8
+      }
+    },
+    {
+      "id": "s5-only-511",
+      "purpose": "Open-class witness whose every EFX allocation has occupancy (5,1,1)",
+      "n": 3,
+      "m": 7,
+      "costs": [
+        [4, 1, 2, 1, 0, 9, 53],
+        [0, 6, 59, 0, 71, 142, 142],
+        [3, 0, 0, 62, 3, 71, 71]
+      ],
+      "argmins": [[4], [0, 3], [1, 2]],
+      "row_nunique": [6, 5, 4],
+      "reversal_witnesses": {
+        "0-1": [0, 1],
+        "0-2": [0, 3],
+        "1-2": [0, 1]
+      },
+      "allocations_checked": 2187,
+      "efx_count": 6,
+      "efx_occupancy": {
+        "5+1+1": 6
+      }
+    }
+  ],
+  "citation": "Appendix D (Table 4) of 'EFX Allocations for Three Agents and Seven or Eight Chores'; verified by artifacts/s5_occupancy_check.py"
+}

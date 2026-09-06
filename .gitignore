@@ -1,0 +1,24 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.DS_Store
+
+# solver byproducts
+artifacts/*.smt2
+artifacts/*.log
+
+# Paper source stays local for the arXiv package; it is not part of this artifact
+/main.tex
+/main.bbl
+/llncs.cls
+/splncs04.bst
+*.aux
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.pdf
+*.synctex.gz

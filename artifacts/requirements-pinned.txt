@@ -1,0 +1,6 @@
+# Environment of the reported decision runs (CPython 3.13.3).
+# The QF_LRA decision is exact rational arithmetic, so results do not depend
+# on hardware or floating point; these pins fix the solver search strategy
+# and therefore the reported timings.
+z3-solver==5.1.0.0
+cvc5==1.3.4
