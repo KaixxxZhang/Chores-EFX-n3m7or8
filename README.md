@@ -1,8 +1,9 @@
 # EFX Allocations for Three Agents and Seven or Eight Chores — artifact
 
-Artifact repository for the paper
+Artifact repository for
 
 > Xinkai Zhang. *EFX Allocations for Three Agents and Seven or Eight Chores.*
+> [arXiv:2609.10585](https://arxiv.org/abs/2609.10585) (cs.GT), 2026.
 
 The paper proves that every nonnegative additive chore instance with three
 agents and either seven or eight indivisible chores admits a chores-EFX
@@ -14,7 +15,7 @@ cvc5 report that formula unsatisfiable.
 
 This repository contains the scripts that build and decide those two formulas,
 the cross-checking encoder and audit harness, the record of every reported run,
-and the regression suite.
+and the regression suite. The paper source is on arXiv, not in this repository.
 
 ## What the machine decides
 
@@ -228,10 +229,14 @@ hardware-dependent and are not complexity claims.
 
 ```bibtex
 @misc{Zhang2026EFXChores,
-  author = {Xinkai Zhang},
-  title  = {{EFX} Allocations for Three Agents and Seven or Eight Chores},
-  year   = {2026},
-  note   = {Artifact: https://github.com/KaixxxZhang/Chores-EFX-n3m7or8}
+  author        = {Xinkai Zhang},
+  title         = {{EFX} Allocations for Three Agents and Seven or Eight Chores},
+  year          = {2026},
+  eprint        = {2609.10585},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.GT},
+  url           = {https://arxiv.org/abs/2609.10585},
+  note          = {Artifact: https://github.com/KaixxxZhang/Chores-EFX-n3m7or8}
 }
 ```
 
