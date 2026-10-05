@@ -1,21 +1,15 @@
-"""Additive **goods** EFX.
+"""Additive goods EFX.
 
-``SPEC.md`` never writes a goods predicate. It fixes exactly one thing about
-goods (§6 "Goods versus chores"): the trim is applied to the **envied** bundle
-``X_j``, not to the envier's own bundle. Everything else here is either forced
-by mirroring the chores clauses of (1) -- perspective row ``i``, ``v_i(empty) = 0``,
-``>=`` boundary with strict ``<`` as the only witness -- or is an unresolved
-gap.
+The goods predicate is used only in the tests, to make sure that the chores
+predicate removes a chore from the envier's own bundle and not, as for goods,
+from the envied bundle ``X_j``.  Both sides are evaluated in the envier's row
+``i``, ``v_i(empty) = 0``, and only strict ``<`` witnesses a violation.
 
-The one unresolved gap is which goods are quantified: the classical EFX
-quantifies only ``g`` with ``v_ig > 0``, while EFX0 quantifies every
-``g in X_j``. ``SPEC.md`` §6 "EFX versus EFX0" tells the implementer to ignore
-the label and quantify all owned *chores*; it says nothing about zero-valued
-goods, and ``KNOWN.md`` cites an EFX0 goods result, so both readings are live.
+Two versions of goods EFX are in use: EFX removes only goods with
+``v_ig > 0``, while EFX0 removes any good in ``X_j``.  The caller has to choose
+one; there is no default.
 
-Therefore ``trim`` is required. There is no default. See ``SPEC_GAPS.md``.
-
-    is_efx_goods(alloc, values, trim=TRIM_POSITIVE)  # classical EFX
+    is_efx_goods(alloc, values, trim=TRIM_POSITIVE)  # EFX
     is_efx_goods(alloc, values, trim=TRIM_ALL)       # EFX0
 """
 
@@ -23,8 +17,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from verifier_b import SpecGapError, parse_matrix, validate_allocation
-from verifier_b.efx_chores import bundle_cost, bundles_of
+from efx_checker import TrimPolicyError, parse_matrix, validate_allocation
+from efx_checker.efx_chores import bundle_cost, bundles_of
 
 __all__ = [
     "TRIM_ALL",
@@ -43,13 +37,13 @@ TRIMS = (TRIM_POSITIVE, TRIM_ALL)
 
 
 def check_trim(trim: str | None) -> str:
-    """Validate an explicit goods trim policy; refuse to pick one."""
+    """Validate an explicit goods trim policy; there is no default."""
     if trim is None:
-        raise SpecGapError(
+        raise TrimPolicyError(
             "goods EFX needs an explicit trim policy: "
             f"trim={TRIM_POSITIVE!r} (only positively valued goods, classical "
             f"EFX) or trim={TRIM_ALL!r} (every good in the envied bundle, "
-            "EFX0). SPEC.md does not decide this; see SPEC_GAPS.md."
+            "EFX0)."
         )
     if trim not in TRIMS:
         raise ValueError(f"unknown goods trim policy {trim!r}; expected one of {TRIMS}")

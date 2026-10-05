@@ -1,39 +1,39 @@
 """Exhaustive EFX counting over all ``n**m`` allocations.
 
-``SPEC.md`` §1 quantifies over every ``a in N**m``; a certifier may therefore
-never sample. Enumerating ``n**m`` tuples literally is hopeless for the stored
-He-Tao instances (``4**13`` and ``5**18``), so this module enumerates *classes*
-of allocations and multiplies each class by the exact number of raw allocations
-it contains. Two class collapses are used, both exact:
+Every allocation in ``N**m`` is covered; nothing is sampled. Enumerating
+``n**m`` tuples literally is too slow for the He-Tao instances in the tests
+(``4**13`` and ``5**18``), so this module enumerates *classes* of allocations
+and multiplies each class by the exact number of raw allocations it contains.
+Two class collapses are used, both exact:
 
 1. **Identical columns.** If chores ``g`` and ``h`` have the same column
    ``(c_0g, ..., c_{n-1}g) == (c_0h, ..., c_{n-1}h)``, swapping them maps
-   allocations to allocations and changes no sum in (1). So an allocation is
+   allocations to allocations and changes no bundle cost. So an allocation is
    determined, up to EFX status, by an occupancy matrix ``O[k][t]`` = how many
    chores of column type ``t`` agent ``k`` receives. One occupancy matrix
    stands for ``prod_t multinomial(k_t; O[0][t], ..., O[n-1][t])`` raw
    allocations.
 2. **Identical rows.** If agents ``p`` and ``q`` have identical cost rows, then
-   permuting their bundles preserves (1) clause by clause, because agent ``p``
+   permuting their bundles preserves every EFX comparison, because agent ``p``
    evaluates the permuted allocation with exactly the row that ``q`` used. So
    only occupancy matrices whose rows are lexicographically nondecreasing
    inside each identical-row group are visited, and each stands for its whole
    orbit (``|group|! / prod (repeat multiplicities)!`` arrangements).
 
-Neither collapse is trusted blindly:
+Both collapses are checked at run time:
 
 * ``allocations_checked`` accumulates the multiplicities and the function
   raises unless the total is *exactly* ``n**m``. A dropped or double-counted
   class cannot pass that check.
 * ``double_check=True`` re-evaluates every class with the literal Fraction
-  predicate of :mod:`verifier_b.efx_chores` / :mod:`verifier_b.efx_goods` on a
+  predicate of :mod:`efx_checker.efx_chores` / :mod:`efx_checker.efx_goods` on a
   representative allocation, and raises on any disagreement. Positive classes
   are always re-checked this way, even when ``double_check`` is off.
 * :func:`brute_force` enumerates all ``n**m`` tuples with the literal
   predicate and is compared against :func:`exhaust` in the test suite.
 
 Inside the fast path costs are scaled by the least common denominator of the
-whole matrix. Every inequality in (1) is a comparison of two sums of row-``i``
+whole matrix. Every EFX inequality is a comparison of two sums of row-``i``
 entries, so multiplying the entire matrix by one positive integer flips
 nothing; it just replaces Fraction arithmetic with int arithmetic.
 """
@@ -46,9 +46,9 @@ from fractions import Fraction
 from itertools import product
 from typing import Any
 
-from verifier_b import CHORES, GOODS, MODES, parse_matrix
-from verifier_b.efx_chores import is_efx_chores
-from verifier_b.efx_goods import TRIM_POSITIVE, check_trim, is_efx_goods
+from efx_checker import CHORES, GOODS, MODES, parse_matrix
+from efx_checker.efx_chores import is_efx_chores
+from efx_checker.efx_goods import TRIM_POSITIVE, check_trim, is_efx_goods
 
 __all__ = [
     "DEFAULT_MAX_CLASSES",
@@ -60,13 +60,12 @@ __all__ = [
 ]
 
 #: Refuse to start an enumeration whose class count exceeds this, instead of
-#: hanging. This is a resource guard, never a soundness excuse: a run that
-#: raises reports no result at all (``SPEC.md`` checklist 19).
+#: hanging. A run that raises reports no result at all.
 DEFAULT_MAX_CLASSES = 20_000_000
 
 
 class ExhaustTooLarge(ValueError):
-    """The instance is too large to certify exhaustively on this machine."""
+    """The instance is too large to check exhaustively on this machine."""
 
 
 @dataclass(frozen=True)
@@ -269,7 +268,7 @@ def exhaust(
             alloc = representative()
             if literal_is_efx(alloc) is not efx:
                 raise RuntimeError(
-                    "verifier_b internal disagreement between the fast "
+                    "internal disagreement between the fast "
                     f"occupancy check ({efx}) and the literal predicate on "
                     f"allocation {alloc} of {matrix}"
                 )
@@ -303,7 +302,7 @@ def exhaust(
 
     if checked != total:
         raise RuntimeError(
-            f"verifier_b accounting error: counted {checked} allocations, "
+            f"accounting error: counted {checked} allocations, "
             f"expected n**m = {total}"
         )
 
@@ -330,8 +329,7 @@ def brute_force(
 ) -> ExhaustResult:
     """Reference sweep: all ``n**m`` tuples through the literal predicate.
 
-    Slow on purpose. Used to cross-check :func:`exhaust`; never used to certify
-    the large stored instances.
+    Slow on purpose. Used to cross-check :func:`exhaust` on small instances.
     """
     mode = _check_mode(mode)
     trim = check_trim(goods_trim) if mode == GOODS else None

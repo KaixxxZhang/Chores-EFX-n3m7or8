@@ -1,10 +1,10 @@
-"""Cross-checking referee encoding of the n=3,m=8 disjoint-argmin residual.
+"""Alternative Z3 encoding of the eight-chore formula Phi_8.
 
-Unlike the two primary encodings, this transcription uses positive (not
-unit-sum) rows, sorts the five free columns in descending order, and retains
-the automatic j == i non-EFX literals.  It is written directly from SPEC.md
-rather than importing another project module.  It is another encoding from
-this project, not an independent third-party audit.
+Unlike eight_chores_z3.py and eight_chores_cvc5.py, this encoding requires only
+positive row totals instead of unit row sums, sorts the five unpinned columns in
+decreasing lexicographic order, and keeps the j == i comparisons, which can
+never witness a violation when costs are nonnegative.  It shares no code with
+the other scripts.
 """
 
 from __future__ import annotations

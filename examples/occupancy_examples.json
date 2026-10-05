@@ -1,11 +1,10 @@
 {
-  "return_type": "ii+iii",
   "mode": "chores",
   "indexing": "zero-based",
   "instances": [
     {
-      "id": "s5-only-322",
-      "purpose": "Open-class witness whose every EFX allocation has occupancy (3,2,2)",
+      "id": "only-322",
+      "purpose": "Pairwise-disjoint argmins; every EFX allocation has occupancy (3,2,2)",
       "n": 3,
       "m": 7,
       "costs": [
@@ -27,8 +26,8 @@
       }
     },
     {
-      "id": "s5-only-331",
-      "purpose": "Open-class witness whose every EFX allocation has occupancy (3,3,1)",
+      "id": "only-331",
+      "purpose": "Pairwise-disjoint argmins; every EFX allocation has occupancy (3,3,1)",
       "n": 3,
       "m": 7,
       "costs": [
@@ -50,8 +49,8 @@
       }
     },
     {
-      "id": "s5-only-421",
-      "purpose": "Open-class witness whose every EFX allocation has occupancy (4,2,1)",
+      "id": "only-421",
+      "purpose": "Pairwise-disjoint argmins; every EFX allocation has occupancy (4,2,1)",
       "n": 3,
       "m": 7,
       "costs": [
@@ -73,8 +72,8 @@
       }
     },
     {
-      "id": "s5-only-511",
-      "purpose": "Open-class witness whose every EFX allocation has occupancy (5,1,1)",
+      "id": "only-511",
+      "purpose": "Pairwise-disjoint argmins; every EFX allocation has occupancy (5,1,1)",
       "n": 3,
       "m": 7,
       "costs": [
@@ -96,5 +95,5 @@
       }
     }
   ],
-  "citation": "Appendix D (Table 4) of 'EFX Allocations for Three Agents and Seven or Eight Chores'; verified by artifacts/s5_occupancy_check.py"
+  "citation": "Appendix A (Table 3) of 'EFX Allocations for Three Agents and Seven or Eight Chores', arXiv:2609.10585; checked by examples/occupancy_examples.py"
 }

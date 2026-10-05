@@ -1,22 +1,19 @@
-"""verifier_b: an independent EFX certifier rebuilt from ``SPEC.md`` alone.
+"""efx_checker: exhaustive EFX checking with exact rational arithmetic.
 
-This package is a second implementation. It imports nothing from ``src/``; the
-only thing intentionally shared with the primary implementation is the on-disk
-JSON shape for cost matrices, which is data, not code. That shape is parsed
-here (:func:`load_instances`) so both halves of the project can read the same
-``artifacts/*.json`` files without sharing a helper.
+The chores predicate is Definition 1 of the paper.  The package does not use an
+SMT solver; it is used to test the clause builders of the SMT encodings and to
+check candidate counterexamples.
 
 Exactness rules used everywhere below:
 
 * every cost is a :class:`fractions.Fraction`;
 * ``float`` input is rejected rather than rounded, because every EFX decision
   is a comparison of two sums and a rounded sum can flip ``<=`` into ``>``;
-* negative costs are rejected (``SPEC.md`` (2) conjoins ``c_ig >= 0``, and the
-  omission of ``j == i`` literals in (6) is only sound for nonnegative costs).
+* negative costs are rejected, since the model has nonnegative costs.
 
-Public names are deliberately small: the predicates live in
-:mod:`verifier_b.efx_chores` and :mod:`verifier_b.efx_goods`, exhaustive
-counting lives in :mod:`verifier_b.exhaust`, and this module owns only input.
+The predicates live in :mod:`efx_checker.efx_chores` and
+:mod:`efx_checker.efx_goods`, exhaustive counting lives in
+:mod:`efx_checker.exhaust`, and this module handles input.
 """
 
 from __future__ import annotations
@@ -33,7 +30,7 @@ __all__ = [
     "GOODS",
     "MODES",
     "Instance",
-    "SpecGapError",
+    "TrimPolicyError",
     "instances_from_obj",
     "load_instances",
     "parse_matrix",
@@ -49,12 +46,11 @@ MODES = (CHORES, GOODS)
 _MATRIX_KEYS = ("costs", "matrix", "values")
 
 
-class SpecGapError(Exception):
-    """Raised instead of guessing where ``SPEC.md`` does not fix the semantics.
+class TrimPolicyError(Exception):
+    """Raised when goods EFX is requested without choosing a trim policy.
 
-    See ``SPEC_GAPS.md``. A certifier that guessed here would certify a
-    predicate nobody asked for, which is exactly the failure mode ``SPEC.md``
-    §6 warns about for the goods/chores trim direction.
+    For goods, EFX (remove only positively valued goods) and EFX0 (remove any
+    good) are different predicates, so the caller has to choose one.
     """
 
 
@@ -90,8 +86,7 @@ def parse_scalar(value: Any) -> Fraction:
 def parse_matrix(rows: Any) -> tuple[tuple[Fraction, ...], ...]:
     """Return an ``n x m`` matrix of exact nonnegative Fractions.
 
-    ``m == 0`` is allowed: ``SPEC.md`` §1 states that for ``m = 0`` the unique
-    all-empty allocation is EFX, so the empty matrix must be representable.
+    ``m == 0`` is allowed; the unique all-empty allocation is then EFX.
     """
     if isinstance(rows, (str, bytes)) or not isinstance(rows, Sequence):
         raise TypeError("matrix must be a sequence of rows")
@@ -115,9 +110,9 @@ def parse_matrix(rows: Any) -> tuple[tuple[Fraction, ...], ...]:
 def validate_allocation(alloc: Sequence[int], n: int, m: int) -> tuple[int, ...]:
     """Check that ``alloc`` is a total assignment in ``N**m`` and return it.
 
-    ``SPEC.md`` §1: an allocation is a *total* map from chores to agents, so no
-    item may be unallocated or duplicated. Representing it as one agent index
-    per item makes both failures unrepresentable; this only checks the shape.
+    An allocation is a total map from chores to agents, so no item may be
+    unallocated or duplicated. Representing it as one agent index per item makes
+    both failures unrepresentable; this only checks the shape.
     """
     if isinstance(alloc, (str, bytes)) or not isinstance(alloc, Sequence):
         raise TypeError("allocation must be a sequence of agent indices")
@@ -190,7 +185,7 @@ def _instance_from_obj(obj: Any, index: int, default_id: str) -> Instance:
 
 
 def instances_from_obj(obj: Any, *, default_id: str = "instance") -> list[Instance]:
-    """Decode the shared matrix JSON schema.
+    """Decode the matrix JSON schema.
 
     Accepted shapes:
 

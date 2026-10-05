@@ -1,4 +1,8 @@
-"""Independent cvc5 encoding of artifacts/s5_all_z3.py."""
+"""Build the seven-chore formula Phi_7 and decide it with cvc5.
+
+The same formula as seven_chores_z3.py, written against the cvc5 API.  Proof
+production and cvc5's internal proof checking are enabled.
+"""
 
 from __future__ import annotations
 

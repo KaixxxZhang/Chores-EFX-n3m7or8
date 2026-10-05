@@ -1,4 +1,9 @@
-"""Exact QF_LRA decision for all positive-row n=3, m=7 chore matrices."""
+"""Build the seven-chore formula Phi_7 and decide it with Z3.
+
+Phi_7 asserts that a nonnegative 3x7 cost matrix with unit row sums and
+lexicographically sorted columns has no EFX allocation: one clause for each of
+the 3**7 allocations.  It is unsatisfiable (Theorem 1 of the paper).
+"""
 
 from __future__ import annotations
 

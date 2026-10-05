@@ -1,9 +1,8 @@
-"""cvc5 QF_LRA transcription of the n=3, m=8 frontier decision.
+"""Build the eight-chore formula Phi_8 and decide it with cvc5.
 
-This is a direct cvc5 transcription, not an import of the Z3 generator.
-``--m 7`` provides the known-UNSAT calibration.  The default exact formula
-quantifies all 3**8 complete allocations.  Solver diversity is not an
-independent mathematical encoding.
+The same formula as eight_chores_z3.py, written against the cvc5 API; it takes
+the same options apart from the Z3 strategy flags.  Proof production and cvc5's
+internal proof checking are enabled unless ``--no-proof-check`` is given.
 """
 
 from __future__ import annotations

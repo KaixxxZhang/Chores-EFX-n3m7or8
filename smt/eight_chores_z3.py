@@ -1,8 +1,12 @@
-"""Exact QF_LRA frontier decision for all positive-row n=3 chore matrices.
+"""Build the eight-chore formula Phi_8 and decide it with Z3.
 
-The default instance is n=3, m=8.  ``--m 7`` is the known-UNSAT calibration
-from ``artifacts/s5_all_z3.py``.  The script is intentionally self-contained:
-it imports neither ``src`` nor ``verifier_b``.
+With ``--residual-disjoint-argmins`` the script builds Phi_8: nonnegative unit
+rows, a cheapest chore of agent i pinned to chore i, pairwise-disjoint argmin
+sets, the five remaining columns sorted, and one non-EFX clause for each of the
+3**m allocations.  Without that flag it builds the unrestricted formula over all
+nonnegative matrices with positive row totals.  The default is m=8; ``--m 7``
+gives the seven-chore calibration runs.  ``--variant`` selects the two SAT
+controls (``>=`` instead of ``>``, and envy-freeness without removal).
 """
 
 from __future__ import annotations
@@ -130,11 +134,11 @@ def add_row_min_symmetry(solver, cost):
 def add_disjoint_argmin_residual(solver, cost):
     """Pin three distinct row minima and exclude every shared row minimum.
 
-    The full-class reduction is mathematical: if a chore is weakly cheapest
-    for two agents, delete it, apply the n=3,m=7 theorem, and reinsert it with
-    Kobayashi--Mahara--Sakamoto Lemma 4.2.  A counterexample must therefore
-    have pairwise-disjoint argmin sets.  After a chore permutation, one chosen
-    minimum of row i can be pinned to chore i.
+    If a chore is weakly cheapest for two agents, delete it, apply the
+    seven-chore theorem, and reinsert it with Lemma 4.2 of Kobayashi, Mahara
+    and Sakamoto.  A counterexample must therefore have pairwise-disjoint
+    argmin sets.  After a chore permutation, one chosen minimum of row i can be
+    pinned to chore i.
     """
     m = len(cost[0])
     if m < len(N):
@@ -214,12 +218,12 @@ def write_model(path: Path, model, cost, *, m: int, variant: str) -> None:
         for i in N
     ]
     payload = {
-        "id": f"s6-z3-n3-m{m}-{variant}",
+        "id": f"z3-n3-m{m}-{variant}",
         "n": 3,
         "m": m,
         "mode": "chores",
         "purpose": (
-            "candidate counterexample requiring independent certification"
+            "candidate counterexample; check it with python -m efx_checker.cli"
             if variant == "efx"
             else f"SAT positive-control model ({variant}); not a counterexample claim"
         ),

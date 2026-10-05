@@ -1,4 +1,4 @@
-"""Make `import src` work without installing the package."""
+"""Make `import efx_checker` work without installing the package."""
 
 import sys
 from pathlib import Path
