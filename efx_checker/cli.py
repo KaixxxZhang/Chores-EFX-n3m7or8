@@ -1,12 +1,12 @@
-"""Command line certifier.
+"""Command line entry point.
 
-    python -m verifier_b.cli artifacts/hetao.json --mode chores
+    python -m efx_checker.cli tests/data/he_tao_counterexamples.json --mode chores
 
 Prints, per instance, ``n``, ``m``, ``n**m``, ``allocations_checked`` and
-``efx_count``. A claimed counterexample is only certified when
+``efx_count``. An instance has no EFX allocation exactly when
 ``efx_count = 0`` *and* ``allocations_checked = n**m``; anything else (a
-resource guard, a schema error, a mode mismatch) exits nonzero and certifies
-nothing.
+resource guard, a schema error, a mode mismatch) exits nonzero and reports
+no result.
 """
 
 from __future__ import annotations
@@ -17,9 +17,9 @@ import sys
 import time
 from collections.abc import Sequence
 
-from verifier_b import CHORES, GOODS, MODES, Instance, SpecGapError, load_instances
-from verifier_b.efx_goods import TRIMS
-from verifier_b.exhaust import DEFAULT_MAX_CLASSES, ExhaustResult, exhaust
+from efx_checker import CHORES, GOODS, MODES, Instance, TrimPolicyError, load_instances
+from efx_checker.efx_goods import TRIMS
+from efx_checker.exhaust import DEFAULT_MAX_CLASSES, ExhaustResult, exhaust
 
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -28,9 +28,9 @@ EXIT_EXPECTATION_FAILED = 2
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m verifier_b.cli",
+        prog="python -m efx_checker.cli",
         description=(
-            "Independent EFX certifier (verifier_b). Exhausts every one of the "
+            "Exhaustive EFX checker. Goes through every one of the "
             "n**m allocations and counts the EFX ones."
         ),
     )
@@ -49,8 +49,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "required with --mode goods: 'positive' trims only positively "
-            "valued goods (classical EFX), 'all' trims every good (EFX0). "
-            "SPEC.md does not decide this; see SPEC_GAPS.md"
+            "valued goods (classical EFX), 'all' trims every good (EFX0)"
         ),
     )
     parser.add_argument(
@@ -58,7 +57,7 @@ def _build_parser() -> argparse.ArgumentParser:
         action="append",
         default=None,
         metavar="ID",
-        help="only certify this instance id (repeatable)",
+        help="only check this instance id (repeatable)",
     )
     parser.add_argument(
         "--double-check",
@@ -68,7 +67,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-row-symmetry",
         action="store_true",
-        help="disable the identical-row collapse (slower, fewer assumptions)",
+        help="do not merge allocations that differ by swapping agents with identical rows",
     )
     parser.add_argument(
         "--max-classes",
@@ -98,7 +97,7 @@ def _resolve_mode(inst: Instance, requested: str | None) -> str:
     if inst.mode is not None and inst.mode != requested:
         raise ValueError(
             f"instance {inst.id} declares mode {inst.mode!r} but --mode "
-            f"{requested} was given; refusing to reinterpret the file"
+            f"{requested} was given"
         )
     return requested
 
@@ -121,12 +120,12 @@ def _report(inst: Instance, result: ExhaustResult, elapsed: float) -> list[str]:
     ]
     if result.witness is not None:
         lines.append(f"  witness_allocation = {tuple(result.witness)}")
-    if not result.exhaustive:  # unreachable: exhaust() raises instead
-        lines.append("  verdict: NOT EXHAUSTIVE - no result")
+    if not result.exhaustive:
+        lines.append("  verdict: not all allocations were checked")
     elif result.efx_count == 0:
-        lines.append("  verdict: NO EFX ALLOCATION EXISTS (exhaustive)")
+        lines.append("  verdict: no EFX allocation")
     else:
-        lines.append("  verdict: EFX ALLOCATION EXISTS - not a counterexample")
+        lines.append("  verdict: EFX allocation found")
     return lines
 
 
@@ -154,9 +153,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     out: list[str] = []
     payload: list[dict[str, object]] = []
     if not args.json:
-        out.append(
-            "verifier_b: independent EFX certifier, exact Fractions, SPEC.md (1)"
-        )
+        out.append("efx_checker: exhaustive EFX check, exact Fractions")
         out.append(f"file: {args.path}")
         out.append("")
 
@@ -175,7 +172,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 max_classes=args.max_classes,
             )
             elapsed = time.perf_counter() - started
-        except SpecGapError as exc:
+        except TrimPolicyError as exc:
             print(f"error: instance {inst.id}: {exc}", file=sys.stderr)
             return EXIT_ERROR
         except (ValueError, TypeError) as exc:

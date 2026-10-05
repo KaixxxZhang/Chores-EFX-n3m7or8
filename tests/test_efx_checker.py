@@ -1,25 +1,21 @@
-"""`verifier_b` against `SPEC.md`, with no reference to `src/`.
+"""Tests for `efx_checker`.
 
-This file is the certifier's own regression suite. It never imports `src`, so a
-green run here says "the second implementation agrees with the written spec",
-independently of whatever the first implementation does.
+Coverage:
 
-Coverage map:
-
-* isolation from `src/` (hard requirement 1);
-* clause-by-clause transcription of `SPEC.md` (1): trim side, empty bundles,
-  zero costs, every-`g`, perspective row, `>` boundary;
-* trim-direction swap detectors for both goods and chores (hard requirement 2),
-  including inline *swapped* reimplementations that must disagree;
-* `artifacts/hetao.json`: exhaustive, no chores EFX allocation (hard
-  requirement 3);
-* `allocations_checked == n**m` on every path (hard requirement 4);
-* the goods zero-value gap is refused, not guessed (hard requirement 5);
-* random `n=3, m=6` chores instances have `efx_count > 0` (hard requirement 6);
+* the chores predicate of Definition 1, clause by clause: trim side, empty
+  bundles, zero costs, every `g`, the envier's row, the `>` boundary;
+* goods versus chores trim direction, including deliberately swapped
+  implementations that must disagree;
+* the goods zero-value policy must be chosen explicitly;
 * `exhaust` (symmetry classes plus multiplicities) against `brute_force` (all
-  `n**m` tuples through the literal predicate).
+  `n**m` tuples through the literal predicate), with
+  `allocations_checked == n**m` on every path;
+* the He-Tao counterexamples in `tests/data/he_tao_counterexamples.json` have
+  no chores EFX allocation;
+* random `n=3, m=6` chores instances have an EFX allocation (m <= 2n);
+* the command line interface.
 
-Set `VERIFIER_B_SLOW=1` to also run the two minute-scale paranoia sweeps.
+Set `EFX_CHECKER_SLOW=1` to also run the two minute-scale He-Tao sweeps.
 """
 
 from __future__ import annotations
@@ -27,7 +23,6 @@ from __future__ import annotations
 import json
 import os
 import random
-import re
 import subprocess
 import sys
 from fractions import Fraction
@@ -36,66 +31,43 @@ from pathlib import Path
 
 import pytest
 
-from verifier_b import (
+from efx_checker import (
     CHORES,
     GOODS,
-    SpecGapError,
+    TrimPolicyError,
     load_instances,
     parse_matrix,
     parse_scalar,
     validate_allocation,
 )
-from verifier_b.efx_chores import (
+from efx_checker.efx_chores import (
     bundle_cost,
     bundles_of,
     chores_violation,
     is_efx_chores,
 )
-from verifier_b.efx_goods import TRIM_ALL, TRIM_POSITIVE, goods_violation, is_efx_goods
-from verifier_b.exhaust import ExhaustTooLarge, brute_force, class_upper_bound, exhaust
+from efx_checker.efx_goods import TRIM_ALL, TRIM_POSITIVE, goods_violation, is_efx_goods
+from efx_checker.exhaust import ExhaustTooLarge, brute_force, class_upper_bound, exhaust
 
 ROOT = Path(__file__).resolve().parents[1]
-HETAO = ROOT / "artifacts" / "hetao.json"
-SLOW = os.environ.get("VERIFIER_B_SLOW") == "1"
-slow = pytest.mark.skipif(not SLOW, reason="set VERIFIER_B_SLOW=1")
+HETAO = ROOT / "tests" / "data" / "he_tao_counterexamples.json"
+HETAO_ARG = "tests/data/he_tao_counterexamples.json"
+SLOW = os.environ.get("EFX_CHECKER_SLOW") == "1"
+slow = pytest.mark.skipif(not SLOW, reason="set EFX_CHECKER_SLOW=1")
 
 
 # --------------------------------------------------------------------------
-# 1. isolation: verifier_b shares nothing with src/
+# 1. the checker does not depend on an SMT solver
 # --------------------------------------------------------------------------
 
-_IMPORT_SRC = re.compile(r"^\s*(?:from|import)\s+src\b", re.MULTILINE)
-_IMPORT_VERIFIER_B = re.compile(r"^\s*(?:from|import)\s+verifier_b\b", re.MULTILINE)
 
-
-def test_verifier_b_has_the_required_modules():
-    for name in ("__init__", "efx_chores", "efx_goods", "exhaust", "cli"):
-        assert (ROOT / "verifier_b" / f"{name}.py").is_file()
-
-
-def test_no_verifier_b_source_imports_src():
-    for path in sorted((ROOT / "verifier_b").glob("*.py")):
-        text = path.read_text()
-        assert not _IMPORT_SRC.search(text), f"{path.name} imports src"
-        assert "__import__" not in text, f"{path.name} hides an import"
-
-
-def test_src_does_not_import_verifier_b():
-    for path in sorted((ROOT / "src").glob("*.py")):
-        assert not _IMPORT_VERIFIER_B.search(path.read_text()), (
-            f"src/{path.name} imports verifier_b; the two implementations must "
-            "stay independent"
-        )
-
-
-def test_importing_verifier_b_never_loads_src_or_z3():
-    """A fresh interpreter that imports all of verifier_b must not pull in src."""
+def test_checker_does_not_import_z3_or_cvc5():
     probe = (
         "import sys;"
-        "import verifier_b, verifier_b.efx_chores, verifier_b.efx_goods,"
-        " verifier_b.exhaust, verifier_b.cli;"
+        "import efx_checker, efx_checker.efx_chores, efx_checker.efx_goods,"
+        " efx_checker.exhaust, efx_checker.cli;"
         "print(sorted(n for n in sys.modules"
-        " if n == 'src' or n.startswith('src.') or n == 'z3' or n.startswith('z3.')))"
+        " if n.split('.')[0] in ('z3', 'cvc5')))"
     )
     done = subprocess.run(
         [sys.executable, "-c", probe], cwd=ROOT, capture_output=True, text=True
@@ -146,12 +118,12 @@ def test_allocation_must_be_total():
 
 
 # --------------------------------------------------------------------------
-# 3. SPEC.md (1), clause by clause
+# 3. Definition 1, clause by clause
 # --------------------------------------------------------------------------
 
 
 def test_empty_own_bundle_is_vacuous_for_that_agent_only():
-    """SPEC.md §1 empty disjunct + §6 "Empty bundles"."""
+    """An empty own bundle satisfies EFX for that agent as envier."""
     # Agent 0 holds nothing and is vacuously EFX as envier. Agent 1 holds both
     # chores and must still beat c1(empty) = 0 after removing either chore.
     assert not is_efx_chores((1, 1), [[3, 1], [1, 3]])
@@ -162,7 +134,7 @@ def test_empty_own_bundle_is_vacuous_for_that_agent_only():
 
 
 def test_m_zero_all_empty_allocation_is_efx():
-    """SPEC.md §1: "For m = 0, the unique all-empty allocation is EFX"."""
+    """For m = 0 the unique all-empty allocation is EFX."""
     assert is_efx_chores((), [[], [], []])
     result = exhaust([[], [], []], CHORES)
     assert (result.total_allocations, result.allocations_checked) == (1, 1)
@@ -170,7 +142,7 @@ def test_m_zero_all_empty_allocation_is_efx():
 
 
 def test_zero_cost_owned_chores_are_quantified():
-    """SPEC.md §6 "Zeros" / checklist 8: no `c[i][g] > 0` guard."""
+    """Zero-cost owned chores are removed too: no `c[i][g] > 0` guard."""
     # Agent 0 owns a free chore and a costly one; agent 1 owns nothing.
     # Trimming the free chore leaves 5 > c0(empty) = 0, so this fails EFX.
     # Skipping zero-cost chores would trim only the costly one and pass.
@@ -181,7 +153,7 @@ def test_zero_cost_owned_chores_are_quantified():
 
 
 def test_every_owned_chore_not_merely_some():
-    """EFX, not EF1: the trim quantifier is universal (SPEC.md (1))."""
+    """EFX, not EF1: the quantifier over owned chores is universal."""
     # own = 5 + 1 = 6 vs other = 4. Trim the 5 and 1 <= 4 passes; trim the 1
     # and 5 > 4 fails. "Some g" would accept, "every g" must reject.
     assert not is_efx_chores((0, 0, 1), [[5, 1, 4], [1, 1, 1]])
@@ -189,13 +161,13 @@ def test_every_owned_chore_not_merely_some():
 
 
 def test_both_bundles_are_costed_in_the_enviers_row():
-    """SPEC.md §6 "Perspective" / checklist 6: c_i(X_j), never c_j(X_j)."""
+    """Agent i compares in its own row: c_i(X_j), never c_j(X_j)."""
     costs = [[1, 1, 5], [9, 9, 0]]
     alloc = (0, 0, 1)
     # Agent 0: own 2, trim either chore -> 1 <= c0(X1) = 5. Agent 1: own 0.
     assert is_efx_chores(alloc, costs)
     # An implementation costing X1 in row 1 would see c1(X1) = 0 and report a
-    # violation, so this assertion is the perspective detector.
+    # violation.
     matrix = parse_matrix(costs)
     bundles = bundles_of(alloc, 2)
     assert bundle_cost(matrix[0], bundles[1]) == 5
@@ -203,7 +175,7 @@ def test_both_bundles_are_costed_in_the_enviers_row():
 
 
 def test_equality_is_efx_and_only_strict_excess_fails():
-    """SPEC.md §6 "Boundary direction"."""
+    """Equality is EFX; only a strict excess fails."""
     # Agent 0 keeps {0,1}, agent 1 keeps {2}. After trimming chore 0 the
     # remainder is exactly c0(X1), so equality must be accepted.
     assert is_efx_chores((0, 0, 1), [[2, 3, 3], [1, 1, 1]])
@@ -221,7 +193,7 @@ def test_fractional_costs_decide_a_boundary_case():
 
 
 # --------------------------------------------------------------------------
-# 4. trim direction: goods vs chores (hard requirement 2)
+# 4. trim direction: goods vs chores
 # --------------------------------------------------------------------------
 
 # Both fixtures use n=2, m=3 and alloc (0,0,1), so X0 = {0,1}, X1 = {2}.
@@ -235,7 +207,7 @@ SPLIT_ALLOC = (0, 0, 1)
 
 
 def _chores_with_the_goods_trim(alloc, costs):
-    """Wrong on purpose: trims the *envied* bundle in a chores comparison."""
+    """Incorrect variant: removes a chore from the *envied* bundle."""
     matrix = parse_matrix(costs)
     bundles = bundles_of(alloc, len(matrix))
     for i in range(len(matrix)):
@@ -249,7 +221,7 @@ def _chores_with_the_goods_trim(alloc, costs):
 
 
 def _goods_with_the_chores_trim(alloc, values):
-    """Wrong on purpose: trims the *envier's own* bundle in a goods comparison."""
+    """Incorrect variant: removes a good from the *envier's own* bundle."""
     matrix = parse_matrix(values)
     bundles = bundles_of(alloc, len(matrix))
     for i in range(len(matrix)):
@@ -273,8 +245,8 @@ def test_chores_efx_and_goods_efx_disagree_in_both_directions(trim):
 
 
 @pytest.mark.parametrize("trim", [TRIM_POSITIVE, TRIM_ALL])
-def test_the_swapped_predicates_really_do_disagree_with_ours(trim):
-    """Guards the fixtures above: they are genuine discriminators."""
+def test_swapped_removal_side_gives_different_answers(trim):
+    """The fixtures above separate the two removal sides."""
     assert _chores_with_the_goods_trim(SPLIT_ALLOC, CHORES_YES_GOODS_NO) is False
     assert is_efx_chores(SPLIT_ALLOC, CHORES_YES_GOODS_NO) is True
 
@@ -309,7 +281,7 @@ def test_exhaust_modes_are_different_predicates_not_aliases(costs):
 
 
 # --------------------------------------------------------------------------
-# 5. the goods zero-value gap is refused, not guessed (hard requirement 5)
+# 5. goods with zero values: the trim policy must be explicit
 # --------------------------------------------------------------------------
 
 # v0 = [0, 5, 1]: agent 0 gets good 2, agent 1 gets goods 0 and 1.
@@ -318,9 +290,9 @@ GAP_ALLOC = (1, 1, 0)
 
 
 def test_goods_requires_an_explicit_trim_policy():
-    with pytest.raises(SpecGapError, match="SPEC_GAPS.md"):
+    with pytest.raises(TrimPolicyError, match="explicit trim policy"):
         is_efx_goods(GAP_ALLOC, GAP_VALUES)
-    with pytest.raises(SpecGapError, match="SPEC_GAPS.md"):
+    with pytest.raises(TrimPolicyError, match="explicit trim policy"):
         exhaust(GAP_VALUES, GOODS)
     with pytest.raises(ValueError, match="unknown goods trim"):
         is_efx_goods(GAP_ALLOC, GAP_VALUES, trim="whatever")
@@ -329,22 +301,15 @@ def test_goods_requires_an_explicit_trim_policy():
         exhaust(GAP_VALUES, CHORES, goods_trim=TRIM_ALL)
 
 
-def test_the_two_goods_readings_really_differ():
-    """Why the gap matters: the policies disagree on this instance."""
+def test_the_two_goods_policies_differ():
+    """The two policies disagree on this instance."""
     assert is_efx_goods(GAP_ALLOC, GAP_VALUES, trim=TRIM_POSITIVE)
     assert not is_efx_goods(GAP_ALLOC, GAP_VALUES, trim=TRIM_ALL)
     assert goods_violation(GAP_ALLOC, GAP_VALUES, trim=TRIM_ALL) == (0, 1, 0)
 
 
-def test_spec_gaps_file_documents_the_open_question():
-    text = (ROOT / "record" / "SPEC_GAPS.md").read_text()
-    assert "GAP-1" in text
-    assert TRIM_POSITIVE in text and TRIM_ALL in text
-    assert "EFX0" in text
-
-
 # --------------------------------------------------------------------------
-# 6. exhaust == brute force (hard requirement 4 accounting)
+# 6. exhaust == brute force
 # --------------------------------------------------------------------------
 
 CROSS_CHECK_MATRICES = [
@@ -405,7 +370,7 @@ def test_scaling_the_whole_matrix_changes_nothing():
     assert a.efx_count == brute_force(fractional, CHORES).efx_count
 
 
-def test_exhaust_refuses_instead_of_hanging():
+def test_exhaust_rejects_instances_that_are_too_large():
     big = [[i * 7 + g for g in range(30)] for i in range(3)]
     with pytest.raises(ExhaustTooLarge):
         exhaust(big, CHORES, max_classes=1000)
@@ -425,7 +390,7 @@ def test_exhaust_reports_n_to_the_m_exactly():
 
 
 # --------------------------------------------------------------------------
-# 7. He-Tao: no chore EFX allocation (hard requirement 3)
+# 7. He-Tao: no chore EFX allocation
 # --------------------------------------------------------------------------
 
 
@@ -442,7 +407,7 @@ def test_hetao_schema_loads_with_our_own_parser():
 
 
 def test_hetao_has_no_chores_efx_allocation():
-    """Hard requirement 3: exhaust, and assert efx_count == 0 everywhere."""
+    """Exhaust both instances and assert efx_count == 0."""
     instances = load_instances(HETAO)
     assert instances
     for inst in instances:
@@ -466,7 +431,7 @@ def test_hetao_n4_is_exhausted_without_the_row_collapse_too():
 
 
 def test_hetao_n4_first_three_chores_are_the_expensive_block():
-    """Cheap guard that the stored matrix is still He-Tao Table 1."""
+    """The stored matrix is Table 1 of He and Tao."""
     inst = next(x for x in load_instances(HETAO) if x.id == "theorem1-n4-table1")
     assert inst.costs[0] == inst.costs[1]
     assert inst.costs[2] == inst.costs[3]
@@ -492,7 +457,7 @@ def test_hetao_n5_without_the_row_collapse():
 
 
 # --------------------------------------------------------------------------
-# 8. positive fixtures: the predicate is not vacuously strict
+# 8. instances that have EFX allocations
 # --------------------------------------------------------------------------
 
 
@@ -509,8 +474,8 @@ def test_handmade_positive_chores_fixture():
 def test_hetao_matrix_truncated_below_2n_becomes_positive():
     """Same matrix family as the counterexample, but m = 6 <= 2n = 8.
 
-    A predicate that says "no EFX" everywhere would pass the He-Tao test for
-    the wrong reason; this fixture fails unless the checker can still say yes.
+    A predicate that rejects every allocation would also pass the He-Tao
+    test; this instance has EFX allocations.
     """
     costs = [
         [20, 20, 20, 1, 1, 7],
@@ -533,12 +498,12 @@ def test_positive_goods_fixture_under_both_policies():
 
 
 # --------------------------------------------------------------------------
-# 9. hard requirement 6: random n=3, m=6 chores instances must have EFX
+# 9. random n=3, m=6 chores instances must have EFX
 # --------------------------------------------------------------------------
 
-# KNOWN.md: additive chores EFX exists whenever m <= 2n
+# Additive chores EFX exists whenever m <= 2n
 # (Kobayashi-Mahara-Sakamoto, arXiv:2305.04168). For n = 3, m = 6 is exactly
-# the closed boundary, so efx_count == 0 there means the predicate is wrong,
+# that boundary, so efx_count == 0 there means the predicate is wrong,
 # not that a counterexample was found. A predicate trimming the wrong bundle
 # reports no EFX allocation on essentially every one of these instances.
 DRAWS = {
@@ -553,20 +518,20 @@ DRAWS = {
 @pytest.mark.parametrize("draw_name", sorted(DRAWS))
 def test_random_n3_m6_chores_instances_have_efx(draw_name):
     draw = DRAWS[draw_name]
-    rng = random.Random(f"verifier_b/{draw_name}")
+    rng = random.Random(f"efx_checker/{draw_name}")
     for trial in range(40):
         costs = [[draw(rng) for _ in range(6)] for _ in range(3)]
         result = exhaust(costs, CHORES)
         assert result.allocations_checked == 3**6
         assert result.efx_count > 0, (
             f"{draw_name} trial {trial}: no EFX allocation for m=6 <= 2n, "
-            f"which contradicts KNOWN.md; costs={costs}"
+            f"which contradicts Kobayashi-Mahara-Sakamoto; costs={costs}"
         )
         assert is_efx_chores(result.witness, costs)
 
 
 def test_random_instances_agree_with_brute_force():
-    rng = random.Random("verifier_b/cross-check")
+    rng = random.Random("efx_checker/cross-check")
     for _ in range(25):
         n = rng.randint(2, 4)
         m = rng.randint(0, 5)
@@ -591,13 +556,13 @@ def test_raw_enumeration_agrees_with_the_predicate_on_a_fixed_instance():
 
 
 # --------------------------------------------------------------------------
-# 10. CLI (hard requirement 4)
+# 10. command line interface
 # --------------------------------------------------------------------------
 
 
 def run_cli(*args, expect_returncode=0):
     done = subprocess.run(
-        [sys.executable, "-m", "verifier_b.cli", *args],
+        [sys.executable, "-m", "efx_checker.cli", *args],
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -607,19 +572,19 @@ def run_cli(*args, expect_returncode=0):
 
 
 def test_cli_on_hetao_prints_the_required_fields():
-    done = run_cli("artifacts/hetao.json", "--mode", "chores")
+    done = run_cli(HETAO_ARG, "--mode", "chores")
     out = done.stdout
     for field in ("n =", "m =", "n**m =", "allocations_checked =", "efx_count ="):
         assert field in out, out
     assert "efx_count = 0" in out
     assert f"allocations_checked = {4 ** 13}" in out
     assert f"allocations_checked = {5 ** 18}" in out
-    assert "NO EFX ALLOCATION EXISTS" in out
+    assert "verdict: no EFX allocation" in out
     assert "witness_allocation" not in out
 
 
 def test_cli_json_output_is_exhaustive_and_zero():
-    done = run_cli("artifacts/hetao.json", "--mode", "chores", "--json")
+    done = run_cli(HETAO_ARG, "--mode", "chores", "--json")
     payload = json.loads(done.stdout)
     assert len(payload["instances"]) == 2
     for item in payload["instances"]:
@@ -629,7 +594,7 @@ def test_cli_json_output_is_exhaustive_and_zero():
         assert item["witness_allocation"] is None
 
 
-def test_cli_expect_no_efx_fails_loudly_on_a_positive_instance(tmp_path):
+def test_cli_expect_no_efx_on_a_positive_instance(tmp_path):
     path = tmp_path / "positive.json"
     path.write_text(
         json.dumps({"id": "positive", "mode": "chores", "costs": [[1, 2], [2, 1]]})
@@ -638,7 +603,7 @@ def test_cli_expect_no_efx_fails_loudly_on_a_positive_instance(tmp_path):
     # Both split allocations are EFX; both hoarding allocations are not.
     assert "efx_count = 2" in done.stdout
     assert "witness_allocation" in done.stdout
-    assert "EFX ALLOCATION EXISTS" in done.stdout
+    assert "verdict: EFX allocation found" in done.stdout
     failed = run_cli(str(path), "--expect-no-efx", expect_returncode=2)
     assert "expectation FAILED" in failed.stdout
 
@@ -651,24 +616,24 @@ def test_cli_accepts_a_bare_matrix_file(tmp_path):
     assert payload["instances"][0]["allocations_checked"] == 3**3
 
 
-def test_cli_refuses_to_guess_the_goods_policy(tmp_path):
+def test_cli_requires_a_goods_policy(tmp_path):
     path = tmp_path / "goods.json"
     path.write_text(json.dumps({"id": "g", "costs": [[1, 0], [0, 1]]}))
     done = run_cli(path.as_posix(), "--mode", "goods", expect_returncode=1)
-    assert "SPEC_GAPS.md" in done.stderr
+    assert "explicit trim policy" in done.stderr
     ok = run_cli(path.as_posix(), "--mode", "goods", "--goods-trim", "all", "--json")
     assert json.loads(ok.stdout)["instances"][0]["goods_trim"] == "all"
 
 
-def test_cli_will_not_reinterpret_a_declared_mode():
-    done = run_cli("artifacts/hetao.json", "--mode", "goods",
+def test_cli_rejects_a_mode_that_conflicts_with_the_file():
+    done = run_cli(HETAO_ARG, "--mode", "goods",
                    "--goods-trim", "all", expect_returncode=1)
-    assert "refusing to reinterpret" in done.stderr
+    assert "declares mode" in done.stderr
 
 
 def test_cli_instance_filter_and_double_check():
     done = run_cli(
-        "artifacts/hetao.json",
+        HETAO_ARG,
         "--mode",
         "chores",
         "--instance",
@@ -678,4 +643,4 @@ def test_cli_instance_filter_and_double_check():
     assert done.stdout.count("instance: ") == 1
     assert "double_checked = True" in done.stdout
     assert "efx_count = 0" in done.stdout
-    run_cli("artifacts/hetao.json", "--instance", "nope", expect_returncode=1)
+    run_cli(HETAO_ARG, "--instance", "nope", expect_returncode=1)

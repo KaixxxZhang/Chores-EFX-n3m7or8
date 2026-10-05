@@ -1,9 +1,12 @@
-"""Semantic and WLOG checks for the n=3, m=8 frontier encoding.
+"""Finite exact checks of the eight-chore encoding.
 
-This file is validation code, not part of the existence formula.  It compares
-the shipped Z3 clause builder against ``verifier_b`` on exact rational inputs
-and deliberately mutates every load-bearing predicate choice.  It is a check
-from this project, not an independent third-party audit.
+The clause builders of eight_chores_z3.py and eight_chores_alt_z3.py are
+compared with the exhaustive EFX checker in ``efx_checker`` on exact rational
+matrices and all 3**8 allocations, and five wrong predicates are shown to
+disagree with the correct one.  The script also checks the zero-row
+construction, the invariance of EFX under row scaling and chore permutation,
+the canonical forms of Sections 3.1 and 4.2, and the steps of the proof of the
+shared-cheapest-chore lemma on small random instances (Section 5.2).
 """
 
 from __future__ import annotations
@@ -22,9 +25,9 @@ ROOT = HERE.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(ROOT))
 
-import s6_all_z3 as encoding  # noqa: E402
-import s6_residual_referee as referee  # noqa: E402
-from verifier_b.efx_chores import is_efx_chores  # noqa: E402
+import eight_chores_alt_z3 as alternative  # noqa: E402
+import eight_chores_z3 as encoding  # noqa: E402
+from efx_checker.efx_chores import is_efx_chores  # noqa: E402
 
 N = tuple(range(3))
 M = tuple(range(8))
@@ -114,15 +117,15 @@ def eval_z3_clause(clause, variables, matrix):
     raise AssertionError(f"concrete clause did not reduce to Boolean: {reduced}")
 
 
-def audit_clause_builder(matrices):
-    variables = [[z3.Real(f"audit_c_{i}_{g}") for g in M] for i in N]
+def check_clause_builders(matrices):
+    variables = [[z3.Real(f"check_c_{i}_{g}") for g in M] for i in N]
     allocations = list(product(N, repeat=8))
     assert len(allocations) == len(set(allocations)) == 6561
 
     mismatches = 0
-    referee_mismatches = 0
+    alternative_mismatches = 0
     bad_literal_counts = set()
-    referee_literal_counts = set()
+    alternative_literal_counts = set()
     mutation_counts = {
         "goods-trim": 0,
         "skip-zero": 0,
@@ -132,37 +135,37 @@ def audit_clause_builder(matrices):
     }
     for allocation in allocations:
         clause = encoding.not_efx_clause(variables, allocation, variant="efx")
-        referee_clause = referee.non_efx_clause(variables, allocation)
+        alternative_clause = alternative.non_efx_clause(variables, allocation)
         bad_literal_counts.add(len(clause.children()))
-        referee_literal_counts.add(len(referee_clause.children()))
+        alternative_literal_counts.add(len(alternative_clause.children()))
         for matrix in matrices:
             expected_bad = not is_efx_chores(allocation, matrix)
             actual_bad = eval_z3_clause(clause, variables, matrix)
             mismatches += actual_bad != expected_bad
-            referee_bad = eval_z3_clause(referee_clause, variables, matrix)
-            referee_mismatches += referee_bad != expected_bad
+            alternative_bad = eval_z3_clause(alternative_clause, variables, matrix)
+            alternative_mismatches += alternative_bad != expected_bad
             for mutation in mutation_counts:
                 mutation_counts[mutation] += (
                     mutant_bad(allocation, matrix, mutation) != expected_bad
                 )
 
     assert mismatches == 0
-    assert referee_mismatches == 0
+    assert alternative_mismatches == 0
     assert bad_literal_counts == {16}
-    assert referee_literal_counts == {24}
+    assert alternative_literal_counts == {24}
     assert all(count > 0 for count in mutation_counts.values())
     return {
         "matrices": len(matrices),
         "allocation_matrix_pairs": len(matrices) * len(allocations),
-        "z3_vs_verifier_mismatches": mismatches,
-        "referee_vs_verifier_mismatches": referee_mismatches,
+        "z3_vs_checker_mismatches": mismatches,
+        "alternative_vs_checker_mismatches": alternative_mismatches,
         "literal_counts": sorted(bad_literal_counts),
-        "referee_literal_counts": sorted(referee_literal_counts),
+        "alternative_literal_counts": sorted(alternative_literal_counts),
         "mutation_mismatches": mutation_counts,
     }
 
 
-def zero_row_audit():
+def check_zero_row():
     rng = random.Random(609)
     checked = 0
     for zero_agent in N:
@@ -181,7 +184,7 @@ def zero_row_audit():
     return checked
 
 
-def invariance_audit():
+def check_invariance():
     rng = random.Random(610)
     scaling_checks = 0
     permutation_checks = 0
@@ -206,7 +209,7 @@ def invariance_audit():
     return scaling_checks, permutation_checks
 
 
-def symmetry_formula_audit():
+def check_canonical_form():
     x = [z3.Real(f"lex_x_{i}") for i in N]
     y = [z3.Real(f"lex_y_{i}") for i in N]
     solver = z3.Solver()
@@ -231,8 +234,8 @@ def symmetry_formula_audit():
     return canonicalized
 
 
-def residual_canonicalization_audit():
-    """Construct the pinned/sorted representative of disjoint-argmin orbits."""
+def check_disjoint_argmin_canonical_form():
+    """Bring matrices with disjoint sets of cheapest chores into the form of Phi_8."""
     rng = random.Random(612)
     checked = 0
     for _ in range(1000):
@@ -289,8 +292,9 @@ def residual_canonicalization_audit():
     return checked
 
 
-def shared_minimum_lifting_audit():
-    """Exercise the m=7 theorem + matching-insertion proof on exact matrices."""
+def check_shared_minimum_lifting():
+    """Delete a shared cheapest chore, take an EFX allocation of the other seven,
+    and check that the chore can be added back keeping a perfect matching."""
 
     def edge(matrix, i, bundle, bundles):
         if not bundle:
@@ -340,22 +344,22 @@ def shared_minimum_lifting_audit():
 
 def main() -> int:
     matrices = rational_matrices()
-    clause = audit_clause_builder(matrices)
-    zero_rows = zero_row_audit()
-    scaling, permutation = invariance_audit()
-    canonicalized = symmetry_formula_audit()
-    residual_canonicalized = residual_canonicalization_audit()
-    shared_minimum_lifted = shared_minimum_lifting_audit()
+    clause = check_clause_builders(matrices)
+    zero_rows = check_zero_row()
+    scaling, permutation = check_invariance()
+    canonicalized = check_canonical_form()
+    disjoint_canonicalized = check_disjoint_argmin_canonical_form()
+    shared_minimum_lifted = check_shared_minimum_lifting()
     print(
         json.dumps(
             {
-                "scope": "n=3,m=8 exact rational audit",
+                "scope": "n=3,m=8 exact rational checks",
                 "clause_builder": clause,
                 "zero_row_constructions_checked": zero_rows,
                 "row_scaling_allocation_checks": scaling,
                 "chore_permutation_allocation_checks": permutation,
                 "canonical_representatives_checked": canonicalized,
-                "residual_canonical_representatives_checked": residual_canonicalized,
+                "disjoint_argmin_canonical_representatives_checked": disjoint_canonicalized,
                 "shared_minimum_lifting_instances_checked": shared_minimum_lifted,
                 "result": "pass",
             },

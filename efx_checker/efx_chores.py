@@ -1,25 +1,22 @@
-"""Additive **chores** EFX, transcribed from ``SPEC.md`` equation (1).
+"""Additive chores EFX (Definition 1 of the paper), implemented literally.
 
-The transcription is deliberately literal and slow. Every clause below cites
-the line of ``SPEC.md`` §1 / §6 that forces it:
+An allocation ``a`` is EFX when, for every agent ``i`` with a nonempty bundle,
+every chore ``g`` in ``X_i`` and every agent ``j``,
+``c_i(X_i \\ {g}) <= c_i(X_j)``.  In detail:
 
 * bundles ``X_k(a) = {g : a_g = k}`` are induced by a total assignment, may be
-  empty, and cover ``M`` exactly (§1);
-* an agent with an empty own bundle contributes the explicit empty disjunct and
-  is vacuously EFX *as envier* (§1, checklist 9);
+  empty, and cover ``M`` exactly;
+* an agent with an empty bundle has nothing to remove and is EFX as envier;
 * an agent with a nonempty bundle still compares against empty bundles, whose
-  cost is 0 (§6 "Empty bundles");
-* the trim happens on the **envier's own** bundle (§6 "Goods versus chores");
-* every owned chore is quantified, including ``c_ig == 0`` (§1, §6 "Zeros",
-  checklist 8) -- there is no ``c[i][g] > 0`` guard;
-* both sides of a comparison are evaluated in the envier's row ``i``
-  (§6 "Perspective", checklist 6);
-* ``j == i`` conjuncts are retained as in (1), even though they are automatic
-  for nonnegative costs (§1);
-* EFX allows equality, so only strict ``>`` witnesses failure (§1, §6
-  "Boundary direction").
+  cost is 0;
+* the chore is removed from the envier's own bundle;
+* every owned chore is removed in turn, including chores with ``c_ig == 0``;
+* both sides of a comparison are evaluated in the envier's row ``i``;
+* the ``j == i`` comparisons are kept, although they always hold for
+  nonnegative costs;
+* equality is allowed, so only strict ``>`` witnesses a violation.
 
-For ``m == 0`` the unique all-empty allocation is EFX (§1).
+For ``m == 0`` the unique all-empty allocation is EFX.
 """
 
 from __future__ import annotations
@@ -27,7 +24,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from fractions import Fraction
 
-from verifier_b import parse_matrix, validate_allocation
+from efx_checker import parse_matrix, validate_allocation
 
 __all__ = [
     "bundle_cost",
@@ -46,7 +43,7 @@ def bundles_of(alloc: Sequence[int], n: int) -> tuple[tuple[int, ...], ...]:
 
 
 def bundle_cost(row: Sequence[Fraction], bundle: Sequence[int]) -> Fraction:
-    """``c_i(S) = sum_{g in S} c_ig``, with ``c_i(empty) = 0`` (§1)."""
+    """``c_i(S) = sum_{g in S} c_ig``, with ``c_i(empty) = 0``."""
     total = Fraction(0)
     for g in bundle:
         total += row[g]
@@ -71,20 +68,19 @@ def chores_violation(
     for i in range(n):
         own = bundles[i]
         if not own:
-            # Explicit empty-bundle disjunct of (1): vacuously EFX for agent i
-            # as envier. Other agents still compare against this empty bundle,
-            # which happens below because bundle_cost(row, ()) == 0.
+            # An empty bundle is EFX for agent i as envier. Other agents still
+            # compare against it below, because bundle_cost(row, ()) == 0.
             continue
         own_cost = bundle_cost(matrix[i], own)
         other_costs = [bundle_cost(matrix[i], bundles[j]) for j in range(n)]
         for g in own:  # includes chores with matrix[i][g] == 0
             remaining = own_cost - matrix[i][g]
-            for j in range(n):  # j == i retained, as in (1)
+            for j in range(n):  # j == i retained, as in Definition 1
                 if remaining > other_costs[j]:
                     return (i, g, j)
     return None
 
 
 def is_efx_chores(alloc: Sequence[int], costs: object) -> bool:
-    """``EFX_3`` of ``SPEC.md`` (1), generalised to any ``n = len(costs)``."""
+    """Chores EFX (Definition 1), for any number ``n = len(costs)`` of agents."""
     return chores_violation(alloc, costs) is None

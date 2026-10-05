@@ -1,8 +1,16 @@
-"""Exact QF_LRA frontier decision for all positive-row n=3 chore matrices.
+"""Build the eight-chore formula Phi_8 and decide it with Z3.
 
-The default instance is n=3, m=8.  ``--m 7`` is the known-UNSAT calibration
-from ``artifacts/s5_all_z3.py``.  The script is intentionally self-contained:
-it imports neither ``src`` nor ``verifier_b``.
+With ``--disjoint-argmins`` the script builds Phi_8 (Section 4.2 of the paper):
+nonnegative rows with unit sums, a cheapest chore of agent i in column i,
+pairwise-disjoint sets of cheapest chores, the remaining columns sorted, and one
+clause for each of the 3**m allocations saying that it is not EFX.  Without that
+flag it builds the formula of Remark 2, over all nonnegative matrices with unit
+row sums and sorted columns.  The default is m=8; ``--m 7`` gives the
+seven-chore runs of Table 2.  ``--variant weak`` uses ``>=`` instead of ``>``,
+and ``--variant envy`` removes no chore (the last two rows of Table 2).
+
+The row-symmetry, allocation-order, seed and model options are not used for
+the runs reported in the paper.
 """
 
 from __future__ import annotations
@@ -17,7 +25,7 @@ import z3
 from z3 import And, Or, Real, SolverFor, Sum
 
 N = tuple(range(3))
-VARIANTS = ("efx", "ge-control", "ef-control")
+VARIANTS = ("efx", "weak", "envy")
 
 
 def load_allocation_order(path: Path | None, m: int) -> list[tuple[int, ...]]:
@@ -68,7 +76,7 @@ def lex_le(left, right):
 
 
 def not_efx_clause(cost, allocation, *, variant: str = "efx"):
-    """Return one fixed allocation's exact non-EFX clause (or a control)."""
+    """Return the clause saying that ``allocation`` is not EFX (or its variant)."""
     if variant not in VARIANTS:
         raise ValueError(f"unknown variant: {variant!r}")
     m = len(allocation)
@@ -80,15 +88,12 @@ def not_efx_clause(cost, allocation, *, variant: str = "efx"):
             if i == j:
                 continue
             other = Sum([cost[i][g] for g in bundles[j]]) if bundles[j] else 0
-            if variant == "ef-control":
-                # Deliberately stronger fairness target: every allocation
-                # must exhibit ordinary envy, with no chore removed.
+            if variant == "envy":
                 violations.append(own > other)
                 continue
             for g in bundles[i]:  # includes zero-cost owned chores
                 residual = own - cost[i][g]
-                if variant == "ge-control":
-                    # Deliberately wrong boundary, used only as a SAT control.
+                if variant == "weak":
                     violations.append(residual >= other)
                 else:
                     violations.append(residual > other)
@@ -96,12 +101,10 @@ def not_efx_clause(cost, allocation, *, variant: str = "efx"):
 
 
 def add_row_minmax_symmetry(solver, cost):
-    """Sound optional agent symmetry from chore-permutation row invariants.
+    """Order the agents so that ``(row minimum, row maximum)`` is nondecreasing.
 
-    After row normalization, independently permute agents so that
-    ``(row minimum, row maximum)`` is nondecreasing.  A later chore
-    permutation leaves these pairs unchanged, so this composes soundly with
-    column sorting.
+    Permuting the chores leaves these pairs unchanged, so this order can be
+    combined with column sorting.
     """
     m = len(cost[0])
     minima = [Real(f"row_min_{i}") for i in N]
@@ -116,7 +119,7 @@ def add_row_minmax_symmetry(solver, cost):
 
 
 def add_row_min_symmetry(solver, cost):
-    """Sort agents by normalized row minimum with two direct LRA disjunctions."""
+    """Order the agents by row minimum."""
 
     def minimum_le(left, right):
         # min(left) <= min(right) iff some entry of left is <= every entry
@@ -127,18 +130,12 @@ def add_row_min_symmetry(solver, cost):
         solver.add(minimum_le(cost[i], cost[i + 1]))
 
 
-def add_disjoint_argmin_residual(solver, cost):
-    """Pin three distinct row minima and exclude every shared row minimum.
-
-    The full-class reduction is mathematical: if a chore is weakly cheapest
-    for two agents, delete it, apply the n=3,m=7 theorem, and reinsert it with
-    Kobayashi--Mahara--Sakamoto Lemma 4.2.  A counterexample must therefore
-    have pairwise-disjoint argmin sets.  After a chore permutation, one chosen
-    minimum of row i can be pinned to chore i.
-    """
+def add_disjoint_argmins(solver, cost):
+    """Make chore i a cheapest chore of agent i and the sets of cheapest chores
+    pairwise disjoint (Section 4.2 of the paper)."""
     m = len(cost[0])
     if m < len(N):
-        raise ValueError("disjoint-argmin residual requires at least three chores")
+        raise ValueError("--disjoint-argmins requires at least three chores")
     for i in N:
         solver.add(*(cost[i][i] <= cost[i][g] for g in range(m)))
     for p, q in combinations(N, 2):
@@ -163,7 +160,7 @@ def build_solver(
     row_min_symmetry: bool = False,
     arith_solver: int | None = None,
     phase_selection: int | None = None,
-    residual_disjoint_argmins: bool = False,
+    disjoint_argmins: bool = False,
 ):
     if m < 1:
         raise ValueError("m must be positive")
@@ -185,19 +182,19 @@ def build_solver(
 
     if row_min_symmetry and row_minmax_symmetry:
         raise ValueError("choose at most one row symmetry mode")
-    if residual_disjoint_argmins and (row_min_symmetry or row_minmax_symmetry):
-        raise ValueError("row symmetry modes are not composed with the pinned residual")
+    if disjoint_argmins and (row_min_symmetry or row_minmax_symmetry):
+        raise ValueError("row symmetry modes cannot be combined with --disjoint-argmins")
     if row_minmax_symmetry:
         add_row_minmax_symmetry(solver, cost)
     elif row_min_symmetry:
         add_row_min_symmetry(solver, cost)
 
-    if residual_disjoint_argmins:
-        add_disjoint_argmin_residual(solver, cost)
+    if disjoint_argmins:
+        add_disjoint_argmins(solver, cost)
 
     if column_symmetry:
         columns = [[cost[i][g] for i in N] for g in range(m)]
-        first_interchangeable = len(N) if residual_disjoint_argmins else 0
+        first_interchangeable = len(N) if disjoint_argmins else 0
         for g in range(first_interchangeable, m - 1):
             solver.add(lex_le(columns[g], columns[g + 1]))
 
@@ -214,14 +211,14 @@ def write_model(path: Path, model, cost, *, m: int, variant: str) -> None:
         for i in N
     ]
     payload = {
-        "id": f"s6-z3-n3-m{m}-{variant}",
+        "id": f"z3-n3-m{m}-{variant}",
         "n": 3,
         "m": m,
         "mode": "chores",
         "purpose": (
-            "candidate counterexample requiring independent certification"
+            "candidate counterexample; check it with python -m efx_checker.cli"
             if variant == "efx"
-            else f"SAT positive-control model ({variant}); not a counterexample claim"
+            else f"satisfying assignment of the {variant} variant"
         ),
         "costs": rows,
     }
@@ -239,7 +236,7 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--arith-solver", type=int, choices=(2, 6))
     parser.add_argument("--phase-selection", type=int, choices=range(8))
-    parser.add_argument("--residual-disjoint-argmins", action="store_true")
+    parser.add_argument("--disjoint-argmins", action="store_true")
     parser.add_argument("--model-out", type=Path)
     parser.add_argument(
         "--allocation-order",
@@ -249,10 +246,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.row_min_symmetry and args.row_minmax_symmetry:
         parser.error("choose at most one row symmetry mode")
-    if args.residual_disjoint_argmins and (
-        args.row_min_symmetry or args.row_minmax_symmetry
-    ):
-        parser.error("row symmetry modes are not composed with the pinned residual")
+    if args.disjoint_argmins and (args.row_min_symmetry or args.row_minmax_symmetry):
+        parser.error("row symmetry modes cannot be combined with --disjoint-argmins")
 
     allocation_prefix = load_allocation_order(args.allocation_order, args.m)
     started = time.perf_counter()
@@ -267,7 +262,7 @@ def main() -> int:
         row_min_symmetry=args.row_min_symmetry,
         arith_solver=args.arith_solver,
         phase_selection=args.phase_selection,
-        residual_disjoint_argmins=args.residual_disjoint_argmins,
+        disjoint_argmins=args.disjoint_argmins,
     )
     built = time.perf_counter()
     result = solver.check()
@@ -284,22 +279,22 @@ def main() -> int:
                 "solver": f"z3-{z3.get_version_string()}",
                 "logic": "QF_LRA",
                 "scope": (
-                    f"n=3,m={args.m} pairwise-disjoint-argmin residual"
-                    if args.residual_disjoint_argmins
-                    else f"all n=3,m={args.m} nonnegative matrices with positive row totals"
+                    f"n=3, m={args.m}, pairwise disjoint sets of cheapest chores"
+                    if args.disjoint_argmins
+                    else f"n=3, m={args.m}, all nonnegative matrices with positive row sums"
                 ),
-                "domain": "unbounded normalized nonnegative Reals",
+                "domain": "nonnegative reals, unit row sums",
                 "variant": args.variant,
                 "column_symmetry": not args.no_column_symmetry,
                 "row_min_symmetry": args.row_min_symmetry,
                 "row_minmax_symmetry": args.row_minmax_symmetry,
-                "residual_disjoint_argmins": args.residual_disjoint_argmins,
+                "disjoint_argmins": args.disjoint_argmins,
                 "arith_solver": args.arith_solver or 6,
                 "phase_selection": args.phase_selection if args.phase_selection is not None else 3,
                 "allocations": 3**args.m,
                 "allocation_clauses": allocation_clauses,
                 "allocation_order_prefix": len(allocation_prefix),
-                "literals_per_clause": 2 * args.m if args.variant != "ef-control" else 6,
+                "literals_per_clause": 2 * args.m if args.variant != "envy" else 6,
                 "assertions": len(solver.assertions()),
                 "result": str(result),
                 "reason_unknown": solver.reason_unknown() if result == z3.unknown else None,

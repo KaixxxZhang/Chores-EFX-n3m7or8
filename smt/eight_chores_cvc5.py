@@ -1,9 +1,9 @@
-"""cvc5 QF_LRA transcription of the n=3, m=8 frontier decision.
+"""Build the eight-chore formula Phi_8 and decide it with cvc5.
 
-This is a direct cvc5 transcription, not an import of the Z3 generator.
-``--m 7`` provides the known-UNSAT calibration.  The default exact formula
-quantifies all 3**8 complete allocations.  Solver diversity is not an
-independent mathematical encoding.
+The same formula as eight_chores_z3.py, written against the cvc5 API; it takes
+the same options apart from the Z3 settings and ``--model-out``.  Proof
+production and cvc5's internal proof checking are enabled unless
+``--no-proof-check`` is given.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ import cvc5
 from cvc5 import Kind
 
 N = tuple(range(3))
-VARIANTS = ("efx", "ge-control", "ef-control")
+VARIANTS = ("efx", "weak", "envy")
 
 
 def load_allocation_order(path: Path | None, m: int) -> list[tuple[int, ...]]:
@@ -62,7 +62,7 @@ def main() -> int:
     parser.add_argument("--row-minmax-symmetry", action="store_true")
     parser.add_argument("--no-proof-check", action="store_true")
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--residual-disjoint-argmins", action="store_true")
+    parser.add_argument("--disjoint-argmins", action="store_true")
     parser.add_argument(
         "--allocation-order",
         type=Path,
@@ -73,10 +73,8 @@ def main() -> int:
         parser.error("--m must be positive")
     if args.row_min_symmetry and args.row_minmax_symmetry:
         parser.error("choose at most one row symmetry mode")
-    if args.residual_disjoint_argmins and (
-        args.row_min_symmetry or args.row_minmax_symmetry
-    ):
-        parser.error("row symmetry modes are not composed with the pinned residual")
+    if args.disjoint_argmins and (args.row_min_symmetry or args.row_minmax_symmetry):
+        parser.error("row symmetry modes cannot be combined with --disjoint-argmins")
 
     allocation_prefix = load_allocation_order(args.allocation_order, args.m)
     solver = cvc5.Solver()
@@ -97,13 +95,13 @@ def main() -> int:
             return terms[0]
         return solver.mkTerm(kind, *terms)
 
-    def z_or(terms):
+    def mk_or(terms):
         return app(Kind.OR, terms, solver.mkFalse())
 
-    def z_and(terms):
+    def mk_and(terms):
         return app(Kind.AND, terms, solver.mkTrue())
 
-    def z_sum(terms):
+    def mk_sum(terms):
         return app(Kind.ADD, terms, zero)
 
     def eq(x, y):
@@ -128,30 +126,30 @@ def main() -> int:
         prefix = []
         cases = []
         for x, y in zip(left, right):
-            cases.append(z_and(prefix + [lt(x, y)]))
+            cases.append(mk_and(prefix + [lt(x, y)]))
             prefix.append(eq(x, y))
-        cases.append(z_and(prefix))
-        return z_or(cases)
+        cases.append(mk_and(prefix))
+        return mk_or(cases)
 
     def not_efx_clause(cost, allocation):
         bundles = [[g for g in range(args.m) if allocation[g] == i] for i in N]
         violations = []
         for i in N:
-            own = z_sum(cost[i][g] for g in bundles[i])
+            own = mk_sum(cost[i][g] for g in bundles[i])
             for j in N:
                 if i == j:
                     continue
-                other = z_sum(cost[i][g] for g in bundles[j])
-                if args.variant == "ef-control":
+                other = mk_sum(cost[i][g] for g in bundles[j])
+                if args.variant == "envy":
                     violations.append(gt(own, other))
                     continue
                 for g in bundles[i]:  # includes zero-cost owned chores
                     residual = sub(own, cost[i][g])
-                    if args.variant == "ge-control":
+                    if args.variant == "weak":
                         violations.append(ge(residual, other))
                     else:
                         violations.append(gt(residual, other))
-        return z_or(violations)
+        return mk_or(violations)
 
     assertion_count = 0
 
@@ -170,7 +168,7 @@ def main() -> int:
     for i in N:
         for g in range(args.m):
             assert_formula(ge(cost[i][g], zero))
-        assert_formula(eq(z_sum(cost[i]), one))
+        assert_formula(eq(mk_sum(cost[i]), one))
 
     if args.row_minmax_symmetry:
         minima = [solver.mkConst(real, f"row_min_{i}") for i in N]
@@ -178,33 +176,33 @@ def main() -> int:
         for i in N:
             for g in range(args.m):
                 assert_formula(ge(cost[i][g], minima[i]))
-            assert_formula(z_or(eq(minima[i], cost[i][g]) for g in range(args.m)))
+            assert_formula(mk_or(eq(minima[i], cost[i][g]) for g in range(args.m)))
             for g in range(args.m):
                 assert_formula(ge(maxima[i], cost[i][g]))
-            assert_formula(z_or(eq(maxima[i], cost[i][g]) for g in range(args.m)))
+            assert_formula(mk_or(eq(maxima[i], cost[i][g]) for g in range(args.m)))
         for i in range(2):
             assert_formula(lex_le([minima[i], maxima[i]], [minima[i + 1], maxima[i + 1]]))
     elif args.row_min_symmetry:
         for i in range(2):
             assert_formula(
-                z_or(
-                    z_and(le(x, y) for y in cost[i + 1])
+                mk_or(
+                    mk_and(le(x, y) for y in cost[i + 1])
                     for x in cost[i]
                 )
             )
 
-    if args.residual_disjoint_argmins:
+    if args.disjoint_argmins:
         if args.m < len(N):
-            parser.error("--residual-disjoint-argmins requires at least three chores")
+            parser.error("--disjoint-argmins requires at least three chores")
         for i in N:
             for g in range(args.m):
                 assert_formula(le(cost[i][i], cost[i][g]))
         for p, q in combinations(N, 2):
             for g in range(args.m):
                 assert_formula(
-                    z_or(
+                    mk_or(
                         (
-                            z_or(
+                            mk_or(
                                 lt(cost[row][h], cost[row][g])
                                 for h in range(args.m)
                                 if h != g
@@ -216,7 +214,7 @@ def main() -> int:
 
     if not args.no_column_symmetry:
         columns = [[cost[i][g] for i in N] for g in range(args.m)]
-        first_interchangeable = len(N) if args.residual_disjoint_argmins else 0
+        first_interchangeable = len(N) if args.disjoint_argmins else 0
         for g in range(first_interchangeable, args.m - 1):
             assert_formula(lex_le(columns[g], columns[g + 1]))
 
@@ -234,20 +232,20 @@ def main() -> int:
                 "solver": f"cvc5-{cvc5.__version__}",
                 "logic": "QF_LRA",
                 "scope": (
-                    f"n=3,m={args.m} pairwise-disjoint-argmin residual"
-                    if args.residual_disjoint_argmins
-                    else f"all n=3,m={args.m} nonnegative matrices with positive row totals"
+                    f"n=3, m={args.m}, pairwise disjoint sets of cheapest chores"
+                    if args.disjoint_argmins
+                    else f"n=3, m={args.m}, all nonnegative matrices with positive row sums"
                 ),
-                "domain": "unbounded normalized nonnegative Reals",
+                "domain": "nonnegative reals, unit row sums",
                 "variant": args.variant,
                 "column_symmetry": not args.no_column_symmetry,
                 "row_min_symmetry": args.row_min_symmetry,
                 "row_minmax_symmetry": args.row_minmax_symmetry,
-                "residual_disjoint_argmins": args.residual_disjoint_argmins,
+                "disjoint_argmins": args.disjoint_argmins,
                 "allocations": 3**args.m,
                 "allocation_clauses": allocation_clauses,
                 "allocation_order_prefix": len(allocation_prefix),
-                "literals_per_clause": 2 * args.m if args.variant != "ef-control" else 6,
+                "literals_per_clause": 2 * args.m if args.variant != "envy" else 6,
                 "assertions": assertion_count,
                 "result": str(result),
                 "proofs_checked_internally": not args.no_proof_check,

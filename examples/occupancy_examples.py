@@ -1,4 +1,13 @@
-"""Independent literal 3^7 occupancy check for artifacts/s5_matrices.json."""
+"""Bundle sizes of the EFX allocations of the four matrices in occupancy_examples.json.
+
+For each 3x7 matrix the script goes through all 3**7 allocations, keeps the EFX
+ones, and records their sorted bundle sizes (the occupancy); this reproduces
+Table 3 of the paper.  Each stored matrix has pairwise-disjoint sets of
+cheapest chores, as stated in Appendix A.  The script also checks that no two
+rows order the chores in the same way and that some row takes at least three
+distinct values, so that the matrices are neither identically ordered nor
+bi-valued.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +17,7 @@ from itertools import combinations, product
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MATRICES = ROOT / "artifacts" / "s5_matrices.json"
+MATRICES = ROOT / "examples" / "occupancy_examples.json"
 N, M = 3, 7
 
 
@@ -30,7 +39,8 @@ def is_efx_chores(allocation, costs):
     return True
 
 
-def open_class(costs):
+def has_stated_properties(costs):
+    """Disjoint cheapest-chore sets, no two rows ordered alike, a row with three values."""
     argmins = []
     for row in costs:
         minimum = min(row)
@@ -64,8 +74,8 @@ def main():
     report = []
     for instance in document["instances"]:
         costs = instance["costs"]
-        if not open_class(costs):
-            raise SystemExit(f"{instance['id']} is outside the open class")
+        if not has_stated_properties(costs):
+            raise SystemExit(f"{instance['id']} does not have the stated properties")
         occupancy = Counter()
         for allocation in product(range(N), repeat=M):
             if is_efx_chores(allocation, costs):
@@ -81,7 +91,7 @@ def main():
         report.append(
             {
                 "id": instance["id"],
-                "open_class": True,
+                "properties_checked": True,
                 "allocations_checked": N**M,
                 "efx_count": sum(occupancy.values()),
                 "efx_occupancy": observed,
