@@ -37,7 +37,7 @@ def lex_ge(left, right):
 
 
 def non_efx_clause(cost, allocation):
-    """Negate chores EFX literally, retaining the harmless j == i cases."""
+    """Clause saying that ``allocation`` is not EFX, including the j == i comparisons."""
     m = len(allocation)
     bundles = [[g for g in range(m) if allocation[g] == i] for i in N]
     violations = []
@@ -54,7 +54,7 @@ def non_efx_clause(cost, allocation):
 
 def build_solver(*, m: int, timeout_s: int):
     if m < len(N):
-        raise ValueError("the pinned residual requires at least three chores")
+        raise ValueError("the formula requires at least three chores")
     solver = SolverFor("QF_LRA")
     solver.set("timeout", timeout_s * 1000)
     solver.set("arith.solver", 2)
@@ -99,8 +99,8 @@ def main() -> int:
             {
                 "solver": f"z3-{z3.get_version_string()}",
                 "logic": "QF_LRA",
-                "scope": f"n=3,m={args.m} pairwise-disjoint-argmin residual",
-                "domain": "unbounded nonnegative Reals with positive row totals",
+                "scope": f"n=3, m={args.m}, pairwise disjoint sets of cheapest chores",
+                "domain": "nonnegative reals, positive row sums",
                 "row_normalization": False,
                 "free_column_order": "descending lexicographic",
                 "self_comparison_literals": True,

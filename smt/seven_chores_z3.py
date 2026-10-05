@@ -62,7 +62,7 @@ def main() -> int:
         solver.add(*(cost[i][g] >= 0 for g in M))
         solver.add(Sum(cost[i]) == 1)
 
-    # WLOG sort all seven normalized cost columns.
+    # Lemma 3: the columns may be sorted.
     columns = [[cost[i][g] for i in N] for g in M]
     for g in range(6):
         solver.add(lex_le(columns[g], columns[g + 1]))
@@ -78,8 +78,8 @@ def main() -> int:
             {
                 "solver": f"z3-{z3.get_version_string()}",
                 "logic": "QF_LRA",
-                "scope": "all n=3,m=7 nonnegative matrices with positive row totals",
-                "domain": "unbounded normalized nonnegative Reals",
+                "scope": "n=3, m=7, all nonnegative matrices with positive row sums",
+                "domain": "nonnegative reals, unit row sums",
                 "allocations": 3**7,
                 "result": str(result),
                 "build_s": round(built - started, 3),

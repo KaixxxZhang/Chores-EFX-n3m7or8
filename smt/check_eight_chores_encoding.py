@@ -1,12 +1,12 @@
 """Finite exact checks of the eight-chore encoding.
 
 The clause builders of eight_chores_z3.py and eight_chores_alt_z3.py are
-compared with the brute-force EFX checker in ``efx_checker`` on exact rational
-matrices and all 3**8 allocations, and five deliberately wrong predicates are
-shown to disagree with the correct one.  The script also checks the zero-row
+compared with the exhaustive EFX checker in ``efx_checker`` on exact rational
+matrices and all 3**8 allocations, and five wrong predicates are shown to
+disagree with the correct one.  The script also checks the zero-row
 construction, the invariance of EFX under row scaling and chore permutation,
-the two canonical forms, and the shared-minimum lifting step on small random
-instances.  None of these checks is used in the proofs.
+the canonical forms of Sections 3.1 and 4.2, and the steps of the proof of the
+shared-cheapest-chore lemma on small random instances (Section 5.2).
 """
 
 from __future__ import annotations
@@ -234,8 +234,8 @@ def check_canonical_form():
     return canonicalized
 
 
-def check_residual_canonical_form():
-    """Construct the pinned/sorted representative of disjoint-argmin orbits."""
+def check_disjoint_argmin_canonical_form():
+    """Bring matrices with disjoint sets of cheapest chores into the form of Phi_8."""
     rng = random.Random(612)
     checked = 0
     for _ in range(1000):
@@ -293,7 +293,8 @@ def check_residual_canonical_form():
 
 
 def check_shared_minimum_lifting():
-    """Exercise the m=7 theorem + matching-insertion proof on exact matrices."""
+    """Delete a shared cheapest chore, take an EFX allocation of the other seven,
+    and check that the chore can be added back keeping a perfect matching."""
 
     def edge(matrix, i, bundle, bundles):
         if not bundle:
@@ -347,7 +348,7 @@ def main() -> int:
     zero_rows = check_zero_row()
     scaling, permutation = check_invariance()
     canonicalized = check_canonical_form()
-    residual_canonicalized = check_residual_canonical_form()
+    disjoint_canonicalized = check_disjoint_argmin_canonical_form()
     shared_minimum_lifted = check_shared_minimum_lifting()
     print(
         json.dumps(
@@ -358,7 +359,7 @@ def main() -> int:
                 "row_scaling_allocation_checks": scaling,
                 "chore_permutation_allocation_checks": permutation,
                 "canonical_representatives_checked": canonicalized,
-                "residual_canonical_representatives_checked": residual_canonicalized,
+                "disjoint_argmin_canonical_representatives_checked": disjoint_canonicalized,
                 "shared_minimum_lifting_instances_checked": shared_minimum_lifted,
                 "result": "pass",
             },

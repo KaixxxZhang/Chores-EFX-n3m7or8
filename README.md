@@ -18,11 +18,11 @@ those formulas, together with the checks described in the paper.
 |---|---|---|
 | `smt/seven_chores_z3.py` | builds `Phi_7` and decides it with Z3 | Prop. 2, Table 1 |
 | `smt/seven_chores_cvc5.py` | the same with cvc5 (proof checking on) | Prop. 2, Table 1 |
-| `smt/eight_chores_z3.py` | builds `Phi_8` (with `--residual-disjoint-argmins`) and decides it with Z3 | Prop. 4, Tables 1-2 |
+| `smt/eight_chores_z3.py` | builds `Phi_8` (with `--disjoint-argmins`) and decides it with Z3 | Prop. 4, Tables 1-2 |
 | `smt/eight_chores_cvc5.py` | the same with cvc5 (proof checking on) | Prop. 4, Tables 1-2 |
 | `smt/eight_chores_alt_z3.py` | a second, separately written encoding of `Phi_8` | Table 2 |
 | `smt/check_eight_chores_encoding.py` | finite exact checks of the eight-chore encoding | Section 5 |
-| `efx_checker/` | brute-force EFX checker over all `n**m` allocations, exact fractions | Section 5 |
+| `efx_checker/` | exhaustive EFX checker over all `n**m` allocations, exact fractions | Section 5 |
 | `examples/` | the four matrices of Appendix A and the script that checks them | Table 3 |
 | `tests/` | tests of `efx_checker`, including the He-Tao counterexamples | |
 | `RUNS.md` | every reported run with its command, result and timing | |
@@ -50,16 +50,15 @@ From the repository root:
 .venv/bin/python smt/seven_chores_cvc5.py --timeout 900
 
 # Theorem 2 (eight chores): about 15 minutes with Z3, about 1 hour with cvc5
-.venv/bin/python smt/eight_chores_z3.py   --m 8 --timeout 7200 --arith-solver 2 --residual-disjoint-argmins
-.venv/bin/python smt/eight_chores_cvc5.py --m 8 --timeout 7200 --residual-disjoint-argmins
+.venv/bin/python smt/eight_chores_z3.py   --m 8 --timeout 7200 --arith-solver 2 --disjoint-argmins
+.venv/bin/python smt/eight_chores_cvc5.py --m 8 --timeout 7200 --disjoint-argmins
 ```
 
 Each script prints a JSON report with the solver version, the formula size and
 the field `"result"`, which should be `unsat`. A `sat` answer would give a
 counterexample to the corresponding theorem; `unknown` or a timeout gives no
-information. For `Phi_8` the flag `--residual-disjoint-argmins` is required:
-without it the scripts build the formula over all eight-chore matrices, which
-the paper does not use.
+information. For `Phi_8` the flag `--disjoint-argmins` is required; without
+it the scripts build the formula of Remark 2 of the paper.
 
 The further runs of Table 2 and the commands for them are listed in
 [`RUNS.md`](RUNS.md).
