@@ -1,7 +1,7 @@
 """Exhaustive EFX counting over all ``n**m`` allocations.
 
-Every allocation in ``N**m`` is covered; nothing is sampled. Enumerating
-``n**m`` tuples literally is too slow for the He-Tao instances in the tests
+All ``n**m`` allocations are counted. Enumerating ``n**m`` tuples one by one
+is too slow for the He-Tao instances in the tests
 (``4**13`` and ``5**18``), so this module enumerates *classes* of allocations
 and multiplies each class by the exact number of raw allocations it contains.
 Two class collapses are used, both exact:
@@ -23,8 +23,7 @@ Two class collapses are used, both exact:
 Both collapses are checked at run time:
 
 * ``allocations_checked`` accumulates the multiplicities and the function
-  raises unless the total is *exactly* ``n**m``. A dropped or double-counted
-  class cannot pass that check.
+  raises unless the total is exactly ``n**m``.
 * ``double_check=True`` re-evaluates every class with the literal Fraction
   predicate of :mod:`efx_checker.efx_chores` / :mod:`efx_checker.efx_goods` on a
   representative allocation, and raises on any disagreement. Positive classes
@@ -327,9 +326,9 @@ def brute_force(
     goods_trim: str | None = None,
     max_allocations: int = 3_000_000,
 ) -> ExhaustResult:
-    """Reference sweep: all ``n**m`` tuples through the literal predicate.
+    """Evaluate the predicate on all ``n**m`` tuples one by one.
 
-    Slow on purpose. Used to cross-check :func:`exhaust` on small instances.
+    Used in the tests to cross-check :func:`exhaust` on small instances.
     """
     mode = _check_mode(mode)
     trim = check_trim(goods_trim) if mode == GOODS else None

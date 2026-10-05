@@ -61,7 +61,7 @@ slow = pytest.mark.skipif(not SLOW, reason="set EFX_CHECKER_SLOW=1")
 # --------------------------------------------------------------------------
 
 
-def test_importing_efx_checker_never_loads_z3_or_cvc5():
+def test_checker_does_not_import_z3_or_cvc5():
     probe = (
         "import sys;"
         "import efx_checker, efx_checker.efx_chores, efx_checker.efx_goods,"
@@ -167,7 +167,7 @@ def test_both_bundles_are_costed_in_the_enviers_row():
     # Agent 0: own 2, trim either chore -> 1 <= c0(X1) = 5. Agent 1: own 0.
     assert is_efx_chores(alloc, costs)
     # An implementation costing X1 in row 1 would see c1(X1) = 0 and report a
-    # violation, so this assertion is the perspective detector.
+    # violation.
     matrix = parse_matrix(costs)
     bundles = bundles_of(alloc, 2)
     assert bundle_cost(matrix[0], bundles[1]) == 5
@@ -207,7 +207,7 @@ SPLIT_ALLOC = (0, 0, 1)
 
 
 def _chores_with_the_goods_trim(alloc, costs):
-    """Wrong on purpose: trims the *envied* bundle in a chores comparison."""
+    """Incorrect variant: removes a chore from the *envied* bundle."""
     matrix = parse_matrix(costs)
     bundles = bundles_of(alloc, len(matrix))
     for i in range(len(matrix)):
@@ -221,7 +221,7 @@ def _chores_with_the_goods_trim(alloc, costs):
 
 
 def _goods_with_the_chores_trim(alloc, values):
-    """Wrong on purpose: trims the *envier's own* bundle in a goods comparison."""
+    """Incorrect variant: removes a good from the *envier's own* bundle."""
     matrix = parse_matrix(values)
     bundles = bundles_of(alloc, len(matrix))
     for i in range(len(matrix)):
@@ -245,8 +245,8 @@ def test_chores_efx_and_goods_efx_disagree_in_both_directions(trim):
 
 
 @pytest.mark.parametrize("trim", [TRIM_POSITIVE, TRIM_ALL])
-def test_the_swapped_predicates_really_do_disagree_with_ours(trim):
-    """Guards the fixtures above: they are genuine discriminators."""
+def test_swapped_removal_side_gives_different_answers(trim):
+    """The fixtures above separate the two removal sides."""
     assert _chores_with_the_goods_trim(SPLIT_ALLOC, CHORES_YES_GOODS_NO) is False
     assert is_efx_chores(SPLIT_ALLOC, CHORES_YES_GOODS_NO) is True
 
@@ -301,7 +301,7 @@ def test_goods_requires_an_explicit_trim_policy():
         exhaust(GAP_VALUES, CHORES, goods_trim=TRIM_ALL)
 
 
-def test_the_two_goods_readings_really_differ():
+def test_the_two_goods_policies_differ():
     """The two policies disagree on this instance."""
     assert is_efx_goods(GAP_ALLOC, GAP_VALUES, trim=TRIM_POSITIVE)
     assert not is_efx_goods(GAP_ALLOC, GAP_VALUES, trim=TRIM_ALL)
@@ -370,7 +370,7 @@ def test_scaling_the_whole_matrix_changes_nothing():
     assert a.efx_count == brute_force(fractional, CHORES).efx_count
 
 
-def test_exhaust_refuses_instead_of_hanging():
+def test_exhaust_rejects_instances_that_are_too_large():
     big = [[i * 7 + g for g in range(30)] for i in range(3)]
     with pytest.raises(ExhaustTooLarge):
         exhaust(big, CHORES, max_classes=1000)
@@ -431,7 +431,7 @@ def test_hetao_n4_is_exhausted_without_the_row_collapse_too():
 
 
 def test_hetao_n4_first_three_chores_are_the_expensive_block():
-    """Cheap guard that the stored matrix is still He-Tao Table 1."""
+    """The stored matrix is Table 1 of He and Tao."""
     inst = next(x for x in load_instances(HETAO) if x.id == "theorem1-n4-table1")
     assert inst.costs[0] == inst.costs[1]
     assert inst.costs[2] == inst.costs[3]
@@ -457,7 +457,7 @@ def test_hetao_n5_without_the_row_collapse():
 
 
 # --------------------------------------------------------------------------
-# 8. positive fixtures: the predicate is not vacuously strict
+# 8. instances that have EFX allocations
 # --------------------------------------------------------------------------
 
 
@@ -474,8 +474,8 @@ def test_handmade_positive_chores_fixture():
 def test_hetao_matrix_truncated_below_2n_becomes_positive():
     """Same matrix family as the counterexample, but m = 6 <= 2n = 8.
 
-    A predicate that says "no EFX" everywhere would pass the He-Tao test for
-    the wrong reason; this fixture fails unless the checker can still say yes.
+    A predicate that rejects every allocation would also pass the He-Tao
+    test; this instance has EFX allocations.
     """
     costs = [
         [20, 20, 20, 1, 1, 7],
@@ -579,7 +579,7 @@ def test_cli_on_hetao_prints_the_required_fields():
     assert "efx_count = 0" in out
     assert f"allocations_checked = {4 ** 13}" in out
     assert f"allocations_checked = {5 ** 18}" in out
-    assert "NO EFX ALLOCATION EXISTS" in out
+    assert "verdict: no EFX allocation" in out
     assert "witness_allocation" not in out
 
 
@@ -594,7 +594,7 @@ def test_cli_json_output_is_exhaustive_and_zero():
         assert item["witness_allocation"] is None
 
 
-def test_cli_expect_no_efx_fails_loudly_on_a_positive_instance(tmp_path):
+def test_cli_expect_no_efx_on_a_positive_instance(tmp_path):
     path = tmp_path / "positive.json"
     path.write_text(
         json.dumps({"id": "positive", "mode": "chores", "costs": [[1, 2], [2, 1]]})
@@ -603,7 +603,7 @@ def test_cli_expect_no_efx_fails_loudly_on_a_positive_instance(tmp_path):
     # Both split allocations are EFX; both hoarding allocations are not.
     assert "efx_count = 2" in done.stdout
     assert "witness_allocation" in done.stdout
-    assert "EFX ALLOCATION EXISTS" in done.stdout
+    assert "verdict: EFX allocation found" in done.stdout
     failed = run_cli(str(path), "--expect-no-efx", expect_returncode=2)
     assert "expectation FAILED" in failed.stdout
 
@@ -616,7 +616,7 @@ def test_cli_accepts_a_bare_matrix_file(tmp_path):
     assert payload["instances"][0]["allocations_checked"] == 3**3
 
 
-def test_cli_refuses_to_guess_the_goods_policy(tmp_path):
+def test_cli_requires_a_goods_policy(tmp_path):
     path = tmp_path / "goods.json"
     path.write_text(json.dumps({"id": "g", "costs": [[1, 0], [0, 1]]}))
     done = run_cli(path.as_posix(), "--mode", "goods", expect_returncode=1)
@@ -625,10 +625,10 @@ def test_cli_refuses_to_guess_the_goods_policy(tmp_path):
     assert json.loads(ok.stdout)["instances"][0]["goods_trim"] == "all"
 
 
-def test_cli_will_not_reinterpret_a_declared_mode():
+def test_cli_rejects_a_mode_that_conflicts_with_the_file():
     done = run_cli(HETAO_ARG, "--mode", "goods",
                    "--goods-trim", "all", expect_returncode=1)
-    assert "refusing to reinterpret" in done.stderr
+    assert "declares mode" in done.stderr
 
 
 def test_cli_instance_filter_and_double_check():

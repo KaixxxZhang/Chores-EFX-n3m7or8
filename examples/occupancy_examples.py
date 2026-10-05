@@ -1,11 +1,12 @@
 """Bundle sizes of the EFX allocations of the four matrices in occupancy_examples.json.
 
 For each 3x7 matrix the script goes through all 3**7 allocations, keeps the EFX
-ones, and records their sorted bundle sizes (the occupancy).  Each stored
-matrix has pairwise-disjoint argmin sets, no two identically ordered rows, and
-a row with at least three distinct values, and all of its EFX allocations have
-one and the same occupancy.  The paper uses these examples only to explain why
-the seven-chore formula ranges over all allocations; neither proof uses them.
+ones, and records their sorted bundle sizes (the occupancy); this reproduces
+Table 3 of the paper.  Each stored matrix has pairwise-disjoint sets of
+cheapest chores, as stated in Appendix A.  The script also checks that no two
+rows order the chores in the same way and that some row takes at least three
+distinct values, so that the matrices are neither identically ordered nor
+bi-valued.
 """
 
 from __future__ import annotations
@@ -38,8 +39,8 @@ def is_efx_chores(allocation, costs):
     return True
 
 
-def open_class(costs):
-    """Disjoint argmins, a reversal between every two rows, a non-bi-valued row."""
+def has_stated_properties(costs):
+    """Disjoint cheapest-chore sets, no two rows ordered alike, a row with three values."""
     argmins = []
     for row in costs:
         minimum = min(row)
@@ -73,7 +74,7 @@ def main():
     report = []
     for instance in document["instances"]:
         costs = instance["costs"]
-        if not open_class(costs):
+        if not has_stated_properties(costs):
             raise SystemExit(f"{instance['id']} does not have the stated properties")
         occupancy = Counter()
         for allocation in product(range(N), repeat=M):
@@ -90,7 +91,7 @@ def main():
         report.append(
             {
                 "id": instance["id"],
-                "open_class": True,
+                "properties_checked": True,
                 "allocations_checked": N**M,
                 "efx_count": sum(occupancy.values()),
                 "efx_occupancy": observed,

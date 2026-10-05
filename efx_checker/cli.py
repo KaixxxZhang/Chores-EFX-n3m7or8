@@ -67,7 +67,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-row-symmetry",
         action="store_true",
-        help="disable the identical-row collapse (slower, fewer assumptions)",
+        help="do not merge allocations that differ by swapping agents with identical rows",
     )
     parser.add_argument(
         "--max-classes",
@@ -97,7 +97,7 @@ def _resolve_mode(inst: Instance, requested: str | None) -> str:
     if inst.mode is not None and inst.mode != requested:
         raise ValueError(
             f"instance {inst.id} declares mode {inst.mode!r} but --mode "
-            f"{requested} was given; refusing to reinterpret the file"
+            f"{requested} was given"
         )
     return requested
 
@@ -120,12 +120,12 @@ def _report(inst: Instance, result: ExhaustResult, elapsed: float) -> list[str]:
     ]
     if result.witness is not None:
         lines.append(f"  witness_allocation = {tuple(result.witness)}")
-    if not result.exhaustive:  # unreachable: exhaust() raises instead
-        lines.append("  verdict: NOT EXHAUSTIVE - no result")
+    if not result.exhaustive:
+        lines.append("  verdict: not all allocations were checked")
     elif result.efx_count == 0:
-        lines.append("  verdict: NO EFX ALLOCATION EXISTS (exhaustive)")
+        lines.append("  verdict: no EFX allocation")
     else:
-        lines.append("  verdict: EFX ALLOCATION EXISTS - not a counterexample")
+        lines.append("  verdict: EFX allocation found")
     return lines
 
 
